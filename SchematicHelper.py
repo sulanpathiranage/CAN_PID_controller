@@ -592,10 +592,6 @@ class SensorPlot:
         self.x_vals = deque(maxlen=1000)
         self.y_vals = deque(maxlen=1000)
 
-        self._data_buffer = deque(maxlen=1000)
-        self.x_vals = deque(maxlen=1000)
-        self.y_vals = deque(maxlen=1000)
-
         if sensor_type == "pressure":
             self.data_manager.pressure_updated.connect(self._on_new_data)
 
@@ -675,7 +671,6 @@ class SensorPlot:
         self.plot.ax.grid(True)
         self.plot.curve, = self.plot.ax.plot([], [], 'r-', linewidth=2)
 
-
     # ---------------- feed control ----------------
     def start(self):
         self._x_counter = 0
@@ -684,17 +679,6 @@ class SensorPlot:
         self.y_vals.clear()
         self.plot.x_vals.clear()
         self.plot.y_vals.clear()
-
-        """ self._enable_timer = QTimer()
-        self._enable_timer.setInterval(200)
-        self._enable_timer.timeout.connect(self._check_data_ready)
-        self._enable_timer.start()
-
-    def _check_data_ready(self):
-        if len(self._data_buffer) > 5:  # Wait until a few values are available
-            print("[DEBUG] Buffer filled. Enabling button.")
-            self.button.pushButton.setEnabled(True)
-            self._enable_timer.stop() """
 
     def stop(self):
         self._running = False
