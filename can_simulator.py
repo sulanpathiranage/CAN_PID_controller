@@ -1,6 +1,4 @@
-import can_reader
-
-import can_reader
+import can
 import threading
 import time
 
@@ -14,7 +12,7 @@ def can_sender(channel, bustype, can_id, base_data, interval):
         base_data (hex array - 8bytes): some data, third and fourth byte are just counters
         interval (int): period of messages 
     """
-    bus = can_reader.interface.Bus(channel=channel, bustype=bustype)
+    bus = can.interface.Bus(channel=channel, bustype=bustype)
     counter = 1
 
     try:
@@ -24,7 +22,7 @@ def can_sender(channel, bustype, can_id, base_data, interval):
             data[2] = counter & 0xFF        # 3rd byte
             data[3] = (counter >> 8) & 0xFF # 4th byte
 
-            msg = can_reader.Message(arbitration_id=can_id,
+            msg = can.Message(arbitration_id=can_id,
                               data=data,
                               is_extended_id=False)
             bus.send(msg)
