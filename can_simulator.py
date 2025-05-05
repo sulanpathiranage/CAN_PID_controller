@@ -1,9 +1,41 @@
 import can
 import threading
 import time
+import random
 
+def flow_sensor_simulator(channel, bustype, can_id, base_data, interval):
+    """Simulate CAN messages with flow sensor readings (4–20 mA)."""
 
+    bus = can.interface.Bus(channel=channel, interface=bustype)
+    flow_value = 4.0  # Start at 4 mA
 
+    try:
+        while True:
+            # Map the flow_value (4-20 mA) to a 16-bit integer (0-65535)
+            raw_value = int((flow_value - 4.0) * (65535.0 / 16.0))  # Convert mA to raw 16-bit value
+
+            # Clone the base data and insert flow sensor readings
+            data = base_data[:]
+            data[2] = raw_value & 0xFF        # 3rd byte (low byte)
+            data[3] = (raw_value >> 8) & 0xFF # 4th byte (high byte)
+
+            msg = can.Message(arbitration_id=can_id,
+                              data=data,
+                              is_extended_id=False)
+            bus.send(msg)
+            print(f"[0x{can_id:X}] Sent: {msg.data.hex()} (Flow: {flow_value:.2f} mA)")
+
+            # Increase flow_value, wrapping around if it goes above 20
+            flow_value += 0.5  # Simulate flow increase
+            flow_value = flow_value + random.uniform(-0.3, 0.3)
+            if flow_value > 20.0:
+                flow_value = 4.0  # Reset to 4 mA if it exceeds 20 mA
+
+            time.sleep(interval)
+
+    except KeyboardInterrupt:
+        print(f"Flow simulator for 0x{can_id:X} stopped.")
+        
 def can_sender(channel, bustype, can_id, base_data, interval):
     """Send CAN messages 
 
@@ -43,7 +75,7 @@ def can_sim():
     daemon=True
     )
     thread_613 = threading.Thread(
-    target=can_sender,
+    target=flow_sensor_simulator,
     args=(channel, bustype, 0x613, [0xAA, 0x10, 0x00, 0x0A, 0xEE, 0xFF, 0x11, 0x22], 1.5),
     daemon=True
     )

@@ -25,6 +25,12 @@ def decode_current(raw_value: int) -> float:
     """Map a 16-bit raw value to a current in milliamps (4–20 mA)."""
     return 4.0 + (16.0 * raw_value / 65535)
 
+def decode_flowrate(fourtwentyvalue):
+    min_flow = 0
+    max_flow = 50
+    flow_rate = min_flow + (fourtwentyvalue - 4.0) * (max_flow - min_flow) / 16.0
+    return flow_rate
+
 def parse_message(msg: can.Message):
     can_id = msg.arbitration_id
     data = list(msg.data)
@@ -32,7 +38,7 @@ def parse_message(msg: can.Message):
 
     if can_id == 0x613:
         # Channel 1: bytes 2–3
-        raw_ch1 = data[3] + (data[4] << 8)
+        raw_ch1 = data[2] + (data[3] << 8)
         # Channel 2: bytes 4–5
         raw_ch2 = data[2] + (data[3] << 8)
 
@@ -40,7 +46,7 @@ def parse_message(msg: can.Message):
         current_ch2 = decode_current(raw_ch2)
 
         now = time.time()
-        analog_in_ch1.append(current_ch1)
+        analog_in_ch1.append(decode_flowrate(current_ch1))
         analog_in_ch2.append(current_ch2)
         timestamps.append(now)
 
@@ -54,11 +60,11 @@ def animate(i):
     """Updates the live plot."""
     if len(timestamps) > 0:
         plt.cla()
-        plt.plot(timestamps, analog_in_ch1, label="Channel 1 (mA)", color='blue')
-        plt.plot(timestamps, analog_in_ch2, label="Channel 2 (mA)", color='green')
+        plt.plot(timestamps, analog_in_ch1, label="Channel 1 (L/s)", color='blue')
+        #plt.plot(timestamps, analog_in_ch2, label="Channel 2 (mA)", color='green')
         plt.xlabel("Time (s)")
-        plt.ylabel("Current (mA)")
-        plt.ylim(3.5, 20.5)
+        plt.ylabel("Flowrate (L/s)")
+        plt.ylim(0,100)
         plt.legend(loc="upper left")
         plt.tight_layout()
 
