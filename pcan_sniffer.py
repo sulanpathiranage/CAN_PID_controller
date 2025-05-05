@@ -1,6 +1,6 @@
 import can
 
-def sniff_pcan(channel='PCAN_USBBUS1', bitrate=500000):
+def sniff_pcan(channel='PCAN_USBBUS1', bitrate=250000):
     
     print(f"Starting PCAN CAN Sniffer on channel '{channel}' with bitrate {bitrate}...")
 
