@@ -32,6 +32,11 @@ def decode_flowrate(fourtwentyvalue):
     return flow_rate
 
 def parse_message(msg: can.Message):
+    """parse messages on can bus
+
+    Args:
+        msg (can.Message): _description_
+    """
     can_id = msg.arbitration_id
     data = list(msg.data)
     module_name = MODULE_NAMES.get(can_id, f"Unknown Module (0x{can_id:X})")
