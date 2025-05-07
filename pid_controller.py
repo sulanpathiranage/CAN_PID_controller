@@ -1,23 +1,49 @@
 class PIDController:
     def __init__(self, kp, ki, kd):
-        self.kp = kp  # Proportional coefficient
-        self.ki = ki  # Integral coefficient
-        self.kd = kd  # Derivative coefficient
+        self.kp = kp  
+        self.ki = ki  
+        self.kd = kd  
         
         self.prev_error = 0
         self.integral = 0
 
-    def calculate(self, setpoint, measured_value):
-        error = setpoint - measured_value  # The difference between target and current value
-        self.integral += error  # Sum of errors (for integral term)
-        derivative = error - self.prev_error  # Rate of change of error (for derivative term)
+    def saturate(value, lower_bound, upper_bound):
+        """Clip value at bounds
+
+        Args:
+            value (double/float/int): variable being bounded
+            lower_bound (int): clip at this lower bound
+            upper_bound (int): clip at this upper bound
+
+        Returns:
+            _type_: variable after being clipped
+        """
+        if (value<lower_bound):
+            return lower_bound
+        elif (value>upper_bound):
+            return upper_bound
+        else:
+            return value
         
+    def calculate(self, setpoint, measured_value):
+        """Calculate the PID output
+
+        Args:
+            setpoint (_type_): setpoint of PID
+            measured_value (_type_): process var. 
+
+        Returns:
+            _type_: output variable
+        """
+        error = setpoint - measured_value  
+        self.integral += error  
+        derivative = error - self.prev_error  
+
         # PID formula: P + I + D
         output = (self.kp * error) + (self.ki * self.integral) + (self.kd * derivative)
         
-        self.prev_error = error  # Update the previous error for the next cycle
+        self.prev_error = error 
         
         return output
 
-# Example usage:
-pid = PIDController(kp=1.0, ki=0.1, kd=0.01)  # Create a PID controller with chosen constants
+
