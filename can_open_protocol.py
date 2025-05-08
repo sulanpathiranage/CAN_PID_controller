@@ -40,13 +40,21 @@ class can_open:
             node_ids (int[]): node ids - sdo setup messages sent to 0x600+node id, configuring such that tpdo
             can_bus (can.bus): canbus
         """
-
         tpdo_config_index = 0x1800 + (num_can_msgs - 1)
         tpdo_map_index = 0x1A00 + (num_can_msgs - 1)
         nvm_index = 0x1010
 
         for element in node_ids:
-            cob_id = 0x180+element
+            cob_id = 0x600+element
+            #1 is COB_ID, 2 transmission type, 3 inhibit time, 5 event timer
+            can_open.spo_configure(tpdo_config_index, 1, 0x80000000 | (0x180 + element), 4, can_bus, cob_id)
+            can_open.spo_configure(tpdo_map_index, 0, 0x00000000, 1, can_bus, cob_id )
+            for i, sub in enumerate(ai_channels):
+            # Entry: 0x6401 (AI), sub << 8, 0x10 bits
+                mapping_entry = (0x6401 << 16) | (sub << 8) | 0x10
+                can_open.spo_configure(tpdo_map_index, i + 1, mapping_entry, 4, can_bus, cob_id)
+
+
             
 
 
@@ -109,7 +117,7 @@ def main():
     try: 
         #can_open.changed_node_id([0x01, 0x02], bus)
         #print("Node ID Reset!")
-        can_open.initialize_nodes([0x01, 0x02], bus)
+        can_open.operational([0x01, 0x02], bus)
         print("Initialized")
     except KeyboardInterrupt: 
         print("Initialized")
