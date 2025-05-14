@@ -1,10 +1,23 @@
 import can
+import time
 
-def sniff_pcan(channel='PCAN_USBBUS1', bitrate=250000):
+def read_bus_timed(bus, duration=3):
+    print(f"Reading CAN bus for {duration} seconds...")
+    end_time = time.time() + duration
+    while time.time() < end_time:
+        msg = bus.recv(timeout=0.1)
+        if msg:
+            print(f"ID: 0x{msg.arbitration_id:X} DLC: {msg.dlc} Data: {msg.data.hex()} Timestamp: {msg.timestamp:.3f}")
+
+
+                   
+
+
+def read_bus_continous(channel,bitrate):
     
     print(f"Starting PCAN CAN Sniffer on channel '{channel}' with bitrate {bitrate}...")
 
-    bus = can.interface.Bus(channel=channel, bustype='pcan', bitrate=bitrate)
+    bus = can.interface.Bus(channel=channel, interface='pcan', bitrate=bitrate)
 
     try:
         for msg in bus:
@@ -15,4 +28,7 @@ def sniff_pcan(channel='PCAN_USBBUS1', bitrate=250000):
         bus.shutdown()
 
 if __name__ == "__main__":
-    sniff_pcan()
+    channel = "PCAN_USBBUS1"
+    bustype = "pcan"
+    bitrate = 500e3
+    read_bus_continous(channel, bitrate)

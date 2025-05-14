@@ -81,6 +81,8 @@ def can_sim():
     )
     thread_600.start()
     thread_613.start()
+
+    
 def main():
     print("Simulating CAN messages... Press Ctrl+C to stop.")
     can_sim()
