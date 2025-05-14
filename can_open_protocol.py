@@ -1,3 +1,4 @@
+
 import can
 import pcan_sniffer
 import time 
@@ -116,27 +117,13 @@ class CanOpen:
             can_bus.send(msg)
 
     @staticmethod
-    def parse_tpdo(data_bytes):
-        """parse message from tpdo
+    def parse_tpdo(msg, resolution):
+        data = [0] * 4
+        for index in range(0,4):
+           value = msg>>(16*(index)) & 0xFFFF
+           data[3-index] = value.to_bytes(resolution//8, 'little')
 
-        Args:
-            data_bytes (): payload from can message to parse
-
-        Raises:
-            ValueError: if can message is not 8 bytes -- lost bytes
-
-        Returns:
-            values (float[]): list of values contained in can message
-        """
-        if len(data_bytes) != 8:
-            raise ValueError("TPDO frame should be exactly 8 bytes")
-        values = []
-        for i in range(0, 8, 2):
-            val = int.from_bytes(data_bytes[i:i+2], byteorder='little')
-            values.append(val)
-        return values
-
-
+        return data
 
 def main():
     channel = "PCAN_USBBUS1"
