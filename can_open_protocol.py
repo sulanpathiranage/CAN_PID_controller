@@ -1,7 +1,11 @@
 
 import can
-import pcan_sniffer
 import time 
+import asyncio
+from typing import List
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from collections import deque
 
 class CanOpen:
 
@@ -117,34 +121,166 @@ class CanOpen:
             can_bus.send(msg)
 
     @staticmethod
-    def parse_tpdo(msg, resolution):
-        data = [0] * 4
-        for index in range(0,4):
-           value = msg>>(16*(index)) & 0xFFFF
-           data[3-index] = value.to_bytes(resolution//8, 'little')
+    def parse_5vadc_tpdo(msg, resolution):
+        data = []
+        min_raw = 0
+        max_raw = (2**resolution-1)  
+        voltage_range = 10.0 / (max_raw - min_raw)
+
+        for i in range(0, 8, 2):  # Each channel is 2 bytes
+            raw = int.from_bytes(msg.data[i:i+2], byteorder='little', signed=True)
+            # Clamp if needed
+            if raw < min_raw:
+                voltage = 0.0
+            elif raw > max_raw:
+                voltage = 5.0
+            else:
+                voltage = (raw - min_raw) * voltage_range
+            data.append(voltage)
 
         return data
+    
+    @staticmethod    
+    def parse_temp_tpdo(msg):
+        data = []
+        scale = 10  
+        offset = 0  
 
-def main():
-    channel = "PCAN_USBBUS1"
-    bustype = "pcan"
-    bitrate = 500e3
-    bus = can.interface.Bus(channel=channel, interface=bustype, bitrate = bitrate)
-    try: 
-        #CanOpen.changed_node_id([0x01, 0x02], bus)
-        #print("Node ID Reset!")
-        CanOpen.commission_adc([0x01,0x02], bus, 2)
-        print("Commissioned!")
-        pcan_sniffer.read_bus_timed(bus, 10)
-        CanOpen.operational([0x01, 0x02], bus)
-        pcan_sniffer.read_bus_timed(bus, 5)
-        print("Initialized")
-    except KeyboardInterrupt: 
-        print("Initialized")
-    finally: 
-        bus.shutdown()
-        print("Bus shutdown")
+        for i in range(0, 8, 2):
+            raw = int.from_bytes(msg.data[i:i+2], byteorder='little', signed=True)
+            temperature = (raw * 0.1)  # each count = 0.1 °C
+            data.append(temperature)
+        return data
 
     
+    @staticmethod
+    def start_listener(bus: can.Bus, resolution=16, queue: asyncio.Queue = None):
+        pt_id = 0x181
+        tc_id_map = {0x182: 2, 0x183: 3, 0x184: 4, 0x185: 5}
+
+        class _AsyncListener(can.Listener):
+            def on_message_received(self, msg):
+                if msg.arbitration_id == pt_id:
+                    node_id = msg.arbitration_id
+                    voltages = CanOpen.parse_5vadc_tpdo(msg, resolution)
+                    print(f"Node {node_id}: {voltages}")
+                    if queue:
+                        asyncio.create_task(queue.put((node_id, 'voltage', voltages)))
+                elif msg.arbitration_id in tc_id_map:
+                    node_id = msg.arbitration_id
+                    temps = CanOpen.parse_temp_tpdo(msg)
+                    print(f"Node {node_id}: {temps}")
+                    if queue:
+                        asyncio.create_task(queue.put((node_id, 'temperature', temps)))
+
+        return can.Notifier(bus, [_AsyncListener()], loop=asyncio.get_running_loop())
+
+
+#testing with gui and queue begins here    
+
+# Deques to store voltage histories
+
+history_len = 100
+ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
+
+fig, axs = plt.subplots(4, 1, figsize=(8, 8), gridspec_kw={'height_ratios': [1,1,1,0.5]}, sharex=True)
+fig.canvas.manager.set_window_title("Pressure Transducer Readings")
+
+names = ["PT1401", "PT1402", "PT1403"]
+lines = []
+
+for i, ax in enumerate(axs[:3]):
+    line, = ax.plot([], [], lw=2)
+    lines.append(line)
+    
+    if i == 0:
+        ax.set_ylim(0, 150)   # PT1401: 0–150 
+    else:
+        ax.set_ylim(0, 300)   # PT1402 & PT1403: 0–300 
+
+    ax.set_xlim(0, history_len)
+    ax.set_ylabel("Pressure")
+    ax.set_title(names[i])
+    ax.grid(True)
+
+
+axs[-1].axis('off') 
+
+axs[-1].set_xlabel("Sample Index")
+
+temp_text = axs[-1].text(0.5, 0.5, "Waiting for temperature data...", 
+                         fontsize=24, ha='center', va='center', transform=axs[-1].transAxes)
+
+
+queue = asyncio.Queue()
+
+last_temps = [None, None, None]
+
+async def consumer_task():
+    global last_temps
+    while True:
+        node_id, data_type, values = await queue.get()
+
+        if data_type == 'voltage':
+            scaled_pressures = [
+                values[0] * 30.0,   # PT1401: 5V -> 100 bar
+                values[1] * 60.0,   # PT1402: 5V -> 300 bar
+                values[2] * 60.0    # PT1403: 5V -> 300 bar
+            ]
+            for i in range(3):
+                ch_data[i].append(scaled_pressures[i])
+        elif data_type == 'temperature':
+            if node_id == 0x182:
+                last_temps = values[:2]
+
+        queue.task_done()
+
+
+def update_plot():
+    x = list(range(history_len))
+    for i in range(3):
+        lines[i].set_data(x, list(ch_data[i]))
+
+    for ax in axs[:3]:
+        ax.relim()
+        ax.autoscale_view()
+
+    # Update temperature text
+    if None not in last_temps:
+        temp_str = (f"T01: {last_temps[0]:.1f} °C    "
+                    f"T02: {last_temps[1]:.1f} °C")
+
+    else:
+        temp_str = "Waiting for temperature data..."
+    temp_text.set_text(temp_str)
+
+    plt.draw()
+    plt.pause(0.01)  
+
+async def main():
+    channel = "PCAN_USBBUS1"
+    bustype = "pcan"
+    bitrate = 500000
+
+    try:
+        bus = can.interface.Bus(channel=channel, interface=bustype, bitrate=bitrate)
+    except Exception as e:
+        print(f"Failed to connect to CAN bus: {e}")
+        return
+
+    CanOpen.start_listener(bus, resolution=16, queue=queue)
+
+    consumer = asyncio.create_task(consumer_task())
+
+    try:
+        while plt.fignum_exists(fig.number):
+            update_plot()
+            await asyncio.sleep(0.1)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        consumer.cancel()
+        await consumer
+
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
