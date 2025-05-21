@@ -245,6 +245,11 @@ class CanOpen:
 
 #testing with gui and queue begins here    
 
+from PyQt6.QtWidgets import (
+    QGroupBox, QFormLayout, QGridLayout, QSizePolicy, QMessageBox, QPushButton
+)
+
+
 
 history_len = 100
 ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
@@ -252,21 +257,38 @@ ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
 class PumpControlWidget(QWidget):
     def __init__(self):
         super().__init__()
+
         self.pump_on_checkbox = QCheckBox("Pump ON")
-        self.speed_label = QLabel("Speed (%)")
+        self.pump_on_checkbox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
         self.speed_slider = QSlider(Qt.Orientation.Horizontal)
         self.speed_slider.setRange(0, 100)
         self.speed_slider.setValue(0)
+
         self.speed_entry = QLineEdit("0")
+        self.speed_entry.setFixedWidth(50)
+        self.speed_entry.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.speed_slider.valueChanged.connect(self.update_entry)
         self.speed_entry.editingFinished.connect(self.update_slider)
 
+        # Layout
         layout = QVBoxLayout()
-        layout.addWidget(self.pump_on_checkbox)
-        layout.addWidget(self.speed_label)
-        layout.addWidget(self.speed_slider)
-        layout.addWidget(self.speed_entry)
+
+        group = QGroupBox("Pump Control")
+        form_layout = QGridLayout()
+
+        form_layout.addWidget(QLabel("Pump State:"), 0, 0)
+        form_layout.addWidget(self.pump_on_checkbox, 0, 1, 1, 2)
+
+        form_layout.addWidget(QLabel("Speed:"), 1, 0)
+        form_layout.addWidget(self.speed_slider, 1, 1)
+        form_layout.addWidget(self.speed_entry, 1, 2)
+
+        group.setLayout(form_layout)
+        layout.addWidget(group)
+        layout.addStretch(1)
+
         self.setLayout(layout)
 
     def update_entry(self, val):
@@ -282,6 +304,7 @@ class PumpControlWidget(QWidget):
 
     def get_state(self):
         return int(self.pump_on_checkbox.isChecked()), self.speed_slider.value()
+    
 
 class PlotCanvas(FigureCanvas):
     def __init__(self):
@@ -322,6 +345,25 @@ class PlotCanvas(FigureCanvas):
         self.temp_text.set_text(temp_str)
         self.draw()
 
+class PressureDisplayWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout()
+        self.labels = []
+
+        for name in ["PT1401", "PT1402", "PT1403"]:
+            label = QLabel(f"{name}: -- psi")
+            label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            self.labels.append(label)
+            layout.addWidget(label)
+
+        self.setLayout(layout)
+
+    def update_pressures(self, pressures):
+        for i, pressure in enumerate(pressures):
+            self.labels[i].setText(f"PT140{i+1:02d}: {pressure:.1f} psi")
+
+
 class MainWindow(QWidget):
     def __init__(self, bus, queue):
         super().__init__()
@@ -331,9 +373,33 @@ class MainWindow(QWidget):
 
         self.pump_control = PumpControlWidget()
         self.plot_canvas = PlotCanvas()
+        self.pressure_display = PressureDisplayWidget()
 
+        # Logging control
+        self.logging = False
+        self.log_file = None
+        self.csv_writer = None
+
+        self.log_filename_entry = QLineEdit()
+        self.log_filename_entry.setPlaceholderText("Enter log filename...")
+        self.log_button = QPushButton("Start Logging")
+        self.log_button.clicked.connect(self.start_logging)
+
+        log_layout = QHBoxLayout()
+        log_layout.addWidget(QLabel("Log File:"))
+        log_layout.addWidget(self.log_filename_entry)
+        log_layout.addWidget(self.log_button)
+        log_widget = QWidget()
+        log_widget.setLayout(log_layout)
+
+        # Layout setup
         layout = QHBoxLayout()
-        layout.addWidget(self.pump_control, 1)
+        side_panel = QVBoxLayout()
+        side_panel.addWidget(self.pump_control)
+        side_panel.addWidget(self.pressure_display)
+        side_panel.addWidget(log_widget)  # Add logging controls here
+
+        layout.addLayout(side_panel, 1)
         layout.addWidget(self.plot_canvas, 3)
         self.setLayout(layout)
 
@@ -341,16 +407,32 @@ class MainWindow(QWidget):
         self.timer.timeout.connect(self.update_plot)
         self.timer.start(100)
 
-        self.log_file = open('pump_data_log.csv', 'w', newline='')
-        self.csv_writer = csv.writer(self.log_file)
-        self.csv_writer.writerow([
-            "Timestamp", "PT1401 ()", "PT1402 ()", "PT1403 ()",
-            "T01 (°C)", "T02 (°C)", "Pump On", "Pump Speed (%)", "Pump Speed (RPM)"
-        ])
-
-
         asyncio.create_task(self.consumer_task())
         asyncio.create_task(self.pump_sender_task())
+
+    def start_logging(self):
+        filename = self.log_filename_entry.text().strip()
+        if not filename:
+            QMessageBox.warning(self, "Missing Filename", "Please enter a log filename.")
+            return
+
+        if not filename.endswith(".csv"):
+            filename += ".csv"
+
+        try:
+            self.log_file = open(filename, 'w', newline='')
+            self.csv_writer = csv.writer(self.log_file)
+            self.csv_writer.writerow([
+                "Timestamp", "PT1401 ()", "PT1402 ()", "PT1403 ()",
+                "T01 (°C)", "T02 (°C)", "Pump On", "Pump Speed (%)", "Pump Speed (RPM)"
+            ])
+            self.logging = True
+            self.log_button.setText("Logging...")
+            self.log_button.setEnabled(False)
+            self.log_filename_entry.setEnabled(False)
+            print(f"Logging to file: {filename}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open file: {e}")
 
     async def consumer_task(self):
         while True:
@@ -359,20 +441,21 @@ class MainWindow(QWidget):
 
             if data_type == 'voltage':
                 scaled_pressures = [
-                    values[0] * 30.0,  # PT1401: 0-5V -> 0-150 bar
-                    values[1] * 60.0,  # PT1402: 0-5V -> 0-300 bar
-                    values[2] * 60.0   # PT1403: 0-5V -> 0-300 bar
+                    values[0] * 30.0,
+                    values[1] * 60.0,
+                    values[2] * 60.0
                 ]
                 for i in range(3):
                     ch_data[i].append(scaled_pressures[i])
-                self.last_pressures = scaled_pressures  # Save for logging
+                self.last_pressures = scaled_pressures
+                self.pressure_display.update_pressures(scaled_pressures)
+
             elif data_type == 'temperature':
                 if node_id == 0x182:
                     self.plot_canvas.last_temps = values[:2]
-                    self.last_temps = values[:2]  # Save for logging
+                    self.last_temps = values[:2]
 
             self.queue.task_done()
-
 
     async def pump_sender_task(self):
         while True:
@@ -381,10 +464,9 @@ class MainWindow(QWidget):
             data = CanOpen.generate_uint_16bit_msg(int(raw1), int(raw2), 0, 0)
             await CanOpen.send_can_message(self.bus, 0x600, data)
 
-            # Log only if pressure and temperature data have been received
-            if hasattr(self, 'last_pressures') and hasattr(self, 'last_temps'):
+            if self.logging and hasattr(self, 'last_pressures') and hasattr(self, 'last_temps'):
                 timestamp = datetime.now().isoformat()
-                rpm = speed * 17.2  # 0-100% -> 0-1720 RPM
+                rpm = speed * 17.2
                 self.csv_writer.writerow([
                     timestamp,
                     *self.last_pressures,
@@ -393,16 +475,16 @@ class MainWindow(QWidget):
                     speed,
                     rpm
                 ])
-                self.log_file.flush()  # Ensure data is written to disk
+                self.log_file.flush()
 
             await asyncio.sleep(0.05)
 
-
     def update_plot(self):
         self.plot_canvas.update_plot()
-        
+
     def closeEvent(self, event):
-        self.log_file.close()
+        if self.log_file:
+            self.log_file.close()
         event.accept()
 
 
