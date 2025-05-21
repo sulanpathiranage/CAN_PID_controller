@@ -22,21 +22,3 @@ def gui_fn():
 
     
 
-def main():
-    try:
-        io_thread = threading.Thread(target=io_fn, daemon= False)
-        gui_thread = threading.Thread(target = gui_fn, daemon= False)
-
-            
-        io_thread.start()
-        gui_thread.start()
-        io_thread.join()
-        gui_thread.join()  
-    except KeyboardInterrupt:
-        print("Program killed!")
-
-if __name__ == "__main__":
-    main()
-
-
-

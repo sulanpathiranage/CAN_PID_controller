@@ -1,11 +1,24 @@
-
 import can
 import time 
 import asyncio
 from typing import List
+
+
+import sys
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+    QCheckBox, QLabel, QSlider, QLineEdit
+)
+from PyQt6.QtCore import Qt, QTimer
+import matplotlib
+matplotlib.use('QtAgg')
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 from collections import deque
+import csv
+from datetime import datetime
+
+
 
 class CanOpen:
 
@@ -41,15 +54,14 @@ class CanOpen:
 
     @staticmethod
     def listen_for_responses(bus, atimeout):
-        """
-        Listen for a response from the node on the CAN bus.
-        
+        """listen for response from commissioning
+
         Args:
-            bus (can.Bus): The CAN bus instance.
-            timeout (float): Time to wait for a response.
-        
+            bus (CAN.bus): canbus
+            atimeout (float): how long to wait
+
         Returns:
-            can.Message or None: The received message or None if no response.
+            list[int]: message or nothing if nothing on bus
         """
         start_time = time.time()
         while time.time() - start_time < atimeout:
@@ -151,10 +163,41 @@ class CanOpen:
             temperature = (raw * 0.1)  # each count = 0.1 °C
             data.append(temperature)
         return data
+    
+    @staticmethod     
+    def generate_uint_16bit_msg(val1, val2, val3, val4):
+        sig_1 = val1.to_bytes(2, byteorder='little', signed=False)
+        sig_2 = val2.to_bytes(2, byteorder='little', signed=False)
+        sig_3 = val3.to_bytes(2, byteorder='little', signed=False)
+        sig_4 = val4.to_bytes(2, byteorder='little', signed=False)
+
+        msg_bytes = sig_1 + sig_2 + sig_3 + sig_4  # Combine all into one bytes object
+        msg = list(msg_bytes)  # Convert to flat list of ints
+
+        return msg
+
+    @staticmethod     
+    def generate_outmm_msg(pump_on, pump_speed):
+
+        if pump_speed < 0:
+            pump_speed = 0
+        elif pump_speed >100:
+            pump_speed = 100
+        else: 
+            pump_speed = pump_speed
+
+        raw_out1 = pump_speed* 655
+
+        if pump_on == 1:
+            raw_out2 = 65535
+        else:
+            raw_out2 = 0
+
+        return raw_out1, raw_out2
 
     
     @staticmethod
-    def start_listener(bus: can.Bus, resolution=16, queue: asyncio.Queue = None):
+    def start_listener(bus: can.Bus, resolution, queue: asyncio.Queue = None):
         pt_id = 0x181
         tc_id_map = {0x182: 2, 0x183: 3, 0x184: 4, 0x185: 5}
 
@@ -174,90 +217,196 @@ class CanOpen:
                         asyncio.create_task(queue.put((node_id, 'temperature', temps)))
 
         return can.Notifier(bus, [_AsyncListener()], loop=asyncio.get_running_loop())
+    
+    @staticmethod
+    async def send_can_message(can_bus: can.Bus, can_id: int, data: List[int]):
+        """nonblocking can_sender (hopefully)
+
+        Args:
+            can_bus (can.Bus): can bus
+            can_id (int): can address of target
+            data (List[int]): msg
+
+        Raises:
+            ValueError: exception error
+        """
+        if len(data) > 8:
+            raise ValueError("CAN data cannot exceed 8 bytes")
+
+        msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=False)
+
+        try:
+            can_bus.send(msg)
+            print(f"[SEND] Sent CAN message: COB-ID=0x{can_id:X}, Data={data}")
+        except can.CanError as e:
+            print(f"[ERROR] Failed to send CAN message: {e}")
+
 
 
 #testing with gui and queue begins here    
 
-# Deques to store voltage histories
 
 history_len = 100
 ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
 
-fig, axs = plt.subplots(4, 1, figsize=(8, 8), gridspec_kw={'height_ratios': [1,1,1,0.5]}, sharex=True)
-fig.canvas.manager.set_window_title("Pressure Transducer Readings")
+class PumpControlWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.pump_on_checkbox = QCheckBox("Pump ON")
+        self.speed_label = QLabel("Speed (%)")
+        self.speed_slider = QSlider(Qt.Orientation.Horizontal)
+        self.speed_slider.setRange(0, 100)
+        self.speed_slider.setValue(0)
+        self.speed_entry = QLineEdit("0")
 
-names = ["PT1401", "PT1402", "PT1403"]
-lines = []
+        self.speed_slider.valueChanged.connect(self.update_entry)
+        self.speed_entry.editingFinished.connect(self.update_slider)
 
-for i, ax in enumerate(axs[:3]):
-    line, = ax.plot([], [], lw=2)
-    lines.append(line)
-    
-    if i == 0:
-        ax.set_ylim(0, 150)   # PT1401: 0–150 
-    else:
-        ax.set_ylim(0, 300)   # PT1402 & PT1403: 0–300 
+        layout = QVBoxLayout()
+        layout.addWidget(self.pump_on_checkbox)
+        layout.addWidget(self.speed_label)
+        layout.addWidget(self.speed_slider)
+        layout.addWidget(self.speed_entry)
+        self.setLayout(layout)
 
-    ax.set_xlim(0, history_len)
-    ax.set_ylabel("Pressure")
-    ax.set_title(names[i])
-    ax.grid(True)
+    def update_entry(self, val):
+        self.speed_entry.setText(str(val))
+
+    def update_slider(self):
+        try:
+            val = int(self.speed_entry.text())
+            if 0 <= val <= 100:
+                self.speed_slider.setValue(val)
+        except ValueError:
+            pass
+
+    def get_state(self):
+        return int(self.pump_on_checkbox.isChecked()), self.speed_slider.value()
+
+class PlotCanvas(FigureCanvas):
+    def __init__(self):
+        self.fig, self.axs = plt.subplots(4, 1, figsize=(8, 8), gridspec_kw={'height_ratios': [1, 1, 1, 0.5]}, sharex=True)
+        super().__init__(self.fig)
+        self.names = ["PT1401", "PT1402", "PT1403"]
+        self.lines = []
+        self.last_temps = [None, None]
+
+        for i, ax in enumerate(self.axs[:3]):
+            line, = ax.plot([], [], lw=2)
+            self.lines.append(line)
+            if i == 0:
+                ax.set_ylim(0, 150)
+            else:
+                ax.set_ylim(0, 300)
+            ax.set_xlim(0, history_len)
+            ax.set_ylabel("Pressure")
+            ax.set_title(self.names[i])
+            ax.grid(True)
+
+        self.axs[-1].axis('off')
+        self.axs[-1].set_xlabel("Sample Index")
+        self.temp_text = self.axs[-1].text(0.5, 0.5, "Waiting for temperature data...",
+                                         fontsize=14, ha='center', va='center', transform=self.axs[-1].transAxes)
+
+    def update_plot(self):
+        x = list(range(history_len))
+        for i in range(3):
+            self.lines[i].set_data(x, list(ch_data[i]))
+        for ax in self.axs[:3]:
+            ax.relim()
+            ax.autoscale_view()
+        if None not in self.last_temps:
+            temp_str = f"T01: {self.last_temps[0]:.1f} °C    T02: {self.last_temps[1]:.1f} °C"
+        else:
+            temp_str = "Waiting for temperature data..."
+        self.temp_text.set_text(temp_str)
+        self.draw()
+
+class MainWindow(QWidget):
+    def __init__(self, bus, queue):
+        super().__init__()
+        self.setWindowTitle("Pump Control & Plot")
+        self.bus = bus
+        self.queue = queue
+
+        self.pump_control = PumpControlWidget()
+        self.plot_canvas = PlotCanvas()
+
+        layout = QHBoxLayout()
+        layout.addWidget(self.pump_control, 1)
+        layout.addWidget(self.plot_canvas, 3)
+        self.setLayout(layout)
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_plot)
+        self.timer.start(100)
+
+        self.log_file = open('pump_data_log.csv', 'w', newline='')
+        self.csv_writer = csv.writer(self.log_file)
+        self.csv_writer.writerow([
+            "Timestamp", "PT1401 ()", "PT1402 ()", "PT1403 ()",
+            "T01 (°C)", "T02 (°C)", "Pump On", "Pump Speed (%)", "Pump Speed (RPM)"
+        ])
 
 
-axs[-1].axis('off') 
+        asyncio.create_task(self.consumer_task())
+        asyncio.create_task(self.pump_sender_task())
 
-axs[-1].set_xlabel("Sample Index")
+    async def consumer_task(self):
+        while True:
+            node_id, data_type, values = await self.queue.get()
+            timestamp = datetime.now().isoformat()
 
-temp_text = axs[-1].text(0.5, 0.5, "Waiting for temperature data...", 
-                         fontsize=24, ha='center', va='center', transform=axs[-1].transAxes)
+            if data_type == 'voltage':
+                scaled_pressures = [
+                    values[0] * 30.0,  # PT1401: 0-5V -> 0-150 bar
+                    values[1] * 60.0,  # PT1402: 0-5V -> 0-300 bar
+                    values[2] * 60.0   # PT1403: 0-5V -> 0-300 bar
+                ]
+                for i in range(3):
+                    ch_data[i].append(scaled_pressures[i])
+                self.last_pressures = scaled_pressures  # Save for logging
+            elif data_type == 'temperature':
+                if node_id == 0x182:
+                    self.plot_canvas.last_temps = values[:2]
+                    self.last_temps = values[:2]  # Save for logging
 
-
-queue = asyncio.Queue()
-
-last_temps = [None, None, None]
-
-async def consumer_task():
-    global last_temps
-    while True:
-        node_id, data_type, values = await queue.get()
-
-        if data_type == 'voltage':
-            scaled_pressures = [
-                values[0] * 30.0,   # PT1401: 5V -> 100 bar
-                values[1] * 60.0,   # PT1402: 5V -> 300 bar
-                values[2] * 60.0    # PT1403: 5V -> 300 bar
-            ]
-            for i in range(3):
-                ch_data[i].append(scaled_pressures[i])
-        elif data_type == 'temperature':
-            if node_id == 0x182:
-                last_temps = values[:2]
-
-        queue.task_done()
+            self.queue.task_done()
 
 
-def update_plot():
-    x = list(range(history_len))
-    for i in range(3):
-        lines[i].set_data(x, list(ch_data[i]))
+    async def pump_sender_task(self):
+        while True:
+            pump_on, speed = self.pump_control.get_state()
+            raw1, raw2 = CanOpen.generate_outmm_msg(pump_on, speed)
+            data = CanOpen.generate_uint_16bit_msg(int(raw1), int(raw2), 0, 0)
+            await CanOpen.send_can_message(self.bus, 0x600, data)
 
-    for ax in axs[:3]:
-        ax.relim()
-        ax.autoscale_view()
+            # Log only if pressure and temperature data have been received
+            if hasattr(self, 'last_pressures') and hasattr(self, 'last_temps'):
+                timestamp = datetime.now().isoformat()
+                rpm = speed * 17.2  # 0-100% -> 0-1720 RPM
+                self.csv_writer.writerow([
+                    timestamp,
+                    *self.last_pressures,
+                    *self.last_temps,
+                    pump_on,
+                    speed,
+                    rpm
+                ])
+                self.log_file.flush()  # Ensure data is written to disk
 
-    # Update temperature text
-    if None not in last_temps:
-        temp_str = (f"T01: {last_temps[0]:.1f} °C    "
-                    f"T02: {last_temps[1]:.1f} °C")
+            await asyncio.sleep(0.05)
 
-    else:
-        temp_str = "Waiting for temperature data..."
-    temp_text.set_text(temp_str)
 
-    plt.draw()
-    plt.pause(0.01)  
+    def update_plot(self):
+        self.plot_canvas.update_plot()
+        
+    def closeEvent(self, event):
+        self.log_file.close()
+        event.accept()
 
-async def main():
+
+async def main_async():
     channel = "PCAN_USBBUS1"
     bustype = "pcan"
     bitrate = 500000
@@ -268,19 +417,17 @@ async def main():
         print(f"Failed to connect to CAN bus: {e}")
         return
 
+    queue = asyncio.Queue()
+
     CanOpen.start_listener(bus, resolution=16, queue=queue)
 
-    consumer = asyncio.create_task(consumer_task())
+    app = QApplication(sys.argv)
+    window = MainWindow(bus, queue)
+    window.show()
 
-    try:
-        while plt.fignum_exists(fig.number):
-            update_plot()
-            await asyncio.sleep(0.1)
-    except asyncio.CancelledError:
-        pass
-    finally:
-        consumer.cancel()
-        await consumer
+    while True:
+        await asyncio.sleep(0.01)
+        app.processEvents()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main_async())
