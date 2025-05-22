@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox, 
     QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
-    QPushButton
+    QPushButton, QDoubleSpinBox
 
 )
 from PyQt6.QtCore import Qt, QTimer
@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 from collections import deque
 import csv
 from datetime import datetime
+from pid_controller import PIDController, PIDControlWidget
 
 
 history_len = 100
@@ -187,7 +188,52 @@ class SensorDisplayWidget(QWidget):
             self.temperature_labels[i].setText(f"T0{i+1}: {temp:.1f} °C")
 
 
+class PIDControlWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.pid_enabled = False
+        self.controller = PIDController()
 
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+
+        layout.addWidget(QLabel("PID Controller"))
+
+        self.kp_input = QDoubleSpinBox(); self.kp_input.setValue(1.0)
+        self.ki_input = QDoubleSpinBox(); self.ki_input.setValue(0.0)
+        self.kd_input = QDoubleSpinBox(); self.kd_input.setValue(0.0)
+        self.setpoint_input = QDoubleSpinBox(); self.setpoint_input.setValue(100.0)
+
+        for spinbox in [self.kp_input, self.ki_input, self.kd_input, self.setpoint_input]:
+            spinbox.setRange(0, 1000); spinbox.setDecimals(2)
+
+        layout.addWidget(QLabel("Kp")); layout.addWidget(self.kp_input)
+        layout.addWidget(QLabel("Ki")); layout.addWidget(self.ki_input)
+        layout.addWidget(QLabel("Kd")); layout.addWidget(self.kd_input)
+        layout.addWidget(QLabel("Setpoint")); layout.addWidget(self.setpoint_input)
+
+        self.toggle_button = QPushButton("Enable PID")
+        self.toggle_button.setCheckable(True)
+        self.toggle_button.clicked.connect(self.toggle_pid)
+        layout.addWidget(self.toggle_button)
+
+    def toggle_pid(self):
+        self.pid_enabled = self.toggle_button.isChecked()
+        self.toggle_button.setText("Disable PID" if self.pid_enabled else "Enable PID")
+        self.controller.reset()
+
+    def update_pid_params(self):
+        kp = self.kp_input.value()
+        ki = self.ki_input.value()
+        kd = self.kd_input.value()
+        setpoint = self.setpoint_input.value()
+        self.controller.set_params(kp, ki, kd)
+        self.controller.set_setpoint(setpoint)
+
+    def compute_output(self, measured_value):
+        self.update_pid_params()
+        return self.controller.calculate(measured_value) if self.pid_enabled else None
+    
 class MainWindow(QWidget):
     def __init__(self, bus, queue):
         super().__init__()
@@ -198,6 +244,7 @@ class MainWindow(QWidget):
         self.pump_control = PumpControlWidget()
         self.plot_canvas = PyqtgraphPlotWidget()
         self.sensor_display = SensorDisplayWidget()
+        self.pid_control = PIDControlWidget()
 
         # Logging control
         self.logging = False
@@ -222,7 +269,8 @@ class MainWindow(QWidget):
         side_panel = QVBoxLayout()
         side_panel.addWidget(self.pump_control)
         side_panel.addWidget(self.sensor_display)
-        side_panel.addWidget(log_widget)  # Add logging controls here
+        side_panel.addWidget(log_widget)  
+        side_panel.addWidget(self.pid_control)
 
         layout.addLayout(side_panel, 1)
         layout.addWidget(self.plot_canvas, 3)
@@ -303,7 +351,11 @@ class MainWindow(QWidget):
 
     async def pump_sender_task(self):
         while True:
-            pump_on, speed = self.pump_control.get_state()
+            pump_on, manual_speed = self.pump_control.get_state()
+            measured_pressure = self.last_pressures[0] if hasattr(self, 'last_pressures') else 0.0
+            pid_speed = self.pid_control.compute_output(measured_pressure)
+            speed = pid_speed if pid_speed is not None else manual_speed
+
             raw1, raw2 = CanOpen.generate_outmm_msg(pump_on, speed)
             data = CanOpen.generate_uint_16bit_msg(int(raw1), int(raw2), 0, 0)
             await CanOpen.send_can_message(self.bus, 0x600, data)
@@ -336,7 +388,7 @@ class MainWindow(QWidget):
 
 async def main_async():
     channel = "PCAN_USBBUS1"
-    bustype = "pcan"
+    bustype = "virtual"
     bitrate = 500000
 
     try:

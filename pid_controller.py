@@ -1,50 +1,37 @@
 class PIDController:
-    def __init__(self, kp, ki, kd, setpoint):
+    def __init__(self, kp=1.0, ki=0.0, kd=0.0, setpoint=0.0):
         self.kp = kp  
         self.ki = ki  
         self.kd = kd  
         self.setpoint = setpoint
-        
         self.prev_error = 0
         self.integral = 0
 
-    def __saturate(value, lower_bound, upper_bound):
-        """Clip value at bounds
-
-        Args:
-            value (double/float/int): variable being bounded
-            lower_bound (int): clip at this lower bound
-            upper_bound (int): clip at this upper bound
-
-        Returns:
-            int: variable after being clipped
-        """
-        if (value<lower_bound):
-            return lower_bound
-        elif (value>upper_bound):
-            return upper_bound
-        else:
-            return value
-        
-    def calculate(self, measured_value):
-        """Calculate the PID output
-
-        Args:
-            setpoint (_type_): setpoint of PID
-            measured_value (_type_): process var. 
-
-        Returns:
-            _type_: output variable
-        """
-        error = self.setpoint - measured_value  
-        self.integral += error  
-        derivative = error - self.prev_error  
-
-        # PID formula: P + I + D
-        output = (self.kp * error) + PIDController.__saturate((self.ki * self.integral), 0, 100) + (self.kd * derivative)
-        
-        self.prev_error = PIDController.__saturate(error, 0, 100) 
-        
-        return PIDController.__saturate(output,0, 100)
+    @staticmethod
+    def saturate(value, lower, upper):
+        return max(lower, min(upper, value))
     
+    def reset(self):
+        self.prev_error = 0
+        self.integral = 0
+
+    def set_params(self, kp, ki, kd):
+        self.kp, self.ki, self.kd = kp, ki, kd
+
+    def set_setpoint(self, setpoint):
+        self.setpoint = setpoint
+
+    def calculate(self, measured_value):
+        error = self.setpoint - measured_value
+        self.integral += error
+        derivative = error - self.prev_error
+
+        output = (
+            self.kp * error
+            + PIDController.saturate(self.ki * self.integral, 0, 100)
+            + PIDController.saturate(self.kd * derivative, 0, 100)
+        )
+
+        self.prev_error = error
+        return PIDController.saturate(output, 0, 100)
 
