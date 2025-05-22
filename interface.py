@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 from collections import deque
 import csv
 from datetime import datetime
-from pid_controller import PIDController, PIDControlWidget
+from pid_controller import PIDController
 
 
 history_len = 100
@@ -43,6 +43,7 @@ class PumpControlWidget(QWidget):
         self.speed_slider.valueChanged.connect(self.update_entry)
         self.speed_entry.editingFinished.connect(self.update_slider)
 
+
         # Layout
         layout = QVBoxLayout()
 
@@ -61,6 +62,9 @@ class PumpControlWidget(QWidget):
         layout.addStretch(1)
 
         self.setLayout(layout)
+
+  
+
 
 
     def update_entry(self, val):
@@ -196,8 +200,11 @@ class PIDControlWidget(QWidget):
 
         layout = QVBoxLayout()
         self.setLayout(layout)
-
+        self.output_label = QLabel("PID Output: -- %")
+        self.output_label.setStyleSheet("font-size: 14px;")
         layout.addWidget(QLabel("PID Controller"))
+                
+        layout.addWidget(self.output_label)
 
         self.kp_input = QDoubleSpinBox(); self.kp_input.setValue(1.0)
         self.ki_input = QDoubleSpinBox(); self.ki_input.setValue(0.0)
@@ -232,7 +239,14 @@ class PIDControlWidget(QWidget):
 
     def compute_output(self, measured_value):
         self.update_pid_params()
-        return self.controller.calculate(measured_value) if self.pid_enabled else None
+        if self.pid_enabled:
+            output = self.controller.calculate(measured_value)
+            self.output_label.setText(f"PID Output: {output:.1f} %")
+            return output
+        else:
+            self.output_label.setText("PID Output: -- %")
+            return None
+
     
 class MainWindow(QWidget):
     def __init__(self, bus, queue):
