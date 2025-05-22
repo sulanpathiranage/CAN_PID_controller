@@ -336,7 +336,7 @@ class MainWindow(QWidget):
 
 async def main_async():
     channel = "PCAN_USBBUS1"
-    bustype = "virtual"
+    bustype = "pcan"
     bitrate = 500000
 
     try:
