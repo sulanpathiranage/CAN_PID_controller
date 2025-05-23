@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 
 )
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QFont
 import matplotlib
 matplotlib.use('QtAgg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -40,15 +41,20 @@ class PumpControlWidget(QWidget):
         self.speed_entry.setFixedWidth(50)
         self.speed_entry.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+        self.output_label = QLabel("PID Output: -- %")
+        self.output_label.setStyleSheet("font-size: 14px; color: #2e8b57;")
+
         self.speed_slider.valueChanged.connect(self.update_entry)
         self.speed_entry.editingFinished.connect(self.update_slider)
 
-
-        # Layout
         layout = QVBoxLayout()
 
         group = QGroupBox("Pump Control")
+        group.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+
         form_layout = QGridLayout()
+        form_layout.setSpacing(10)
+        form_layout.setContentsMargins(10, 10, 10, 10)
 
         form_layout.addWidget(QLabel("Pump State:"), 0, 0)
         form_layout.addWidget(self.pump_on_checkbox, 0, 1, 1, 2)
@@ -57,15 +63,13 @@ class PumpControlWidget(QWidget):
         form_layout.addWidget(self.speed_slider, 1, 1)
         form_layout.addWidget(self.speed_entry, 1, 2)
 
+        form_layout.addWidget(self.output_label, 2, 0, 1, 3)
+
         group.setLayout(form_layout)
         layout.addWidget(group)
         layout.addStretch(1)
 
         self.setLayout(layout)
-
-  
-
-
 
     def update_entry(self, val):
         self.speed_entry.setText(str(val))
@@ -84,6 +88,9 @@ class PumpControlWidget(QWidget):
 
 import pyqtgraph as pg
 
+
+# pg.setConfigOption('background', 'w')     # white background
+# pg.setConfigOption('foreground', 'k')     # black text and gridlines
 
 class PyqtgraphPlotWidget(QWidget):
     def __init__(self):
@@ -220,6 +227,12 @@ class PIDControlWidget(QWidget):
         layout.addWidget(QLabel("Setpoint")); layout.addWidget(self.setpoint_input)
 
         self.toggle_button = QPushButton("Enable PID")
+        self.toggle_button.setStyleSheet("""
+            background-color: #007ACC;
+            color: white;
+            font-weight: bold;
+            border-radius: 5px;
+        """)
         self.toggle_button.setCheckable(True)
         self.toggle_button.clicked.connect(self.toggle_pid)
         layout.addWidget(self.toggle_button)
@@ -251,7 +264,37 @@ class PIDControlWidget(QWidget):
 class MainWindow(QWidget):
     def __init__(self, bus, queue):
         super().__init__()
-        self.setWindowTitle("Pump Control & Plot")
+        self.setStyleSheet("""
+            QWidget {
+                font-family: 'Segoe UI';
+                font-size: 12pt;
+            }
+            QGroupBox {
+                border: 1px solid #aaa;
+                border-radius: 6px;
+                margin-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 3px 0 3px;
+            }
+            QPushButton {
+                background-color: #007ACC;
+                color: white;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #ccc;
+            }
+            QLineEdit, QLabel {
+                padding: 2px;
+            }
+            """)
+
+        self.setWindowTitle("Instrumentation Dashboard")
+        self.setMinimumSize(1200, 800)        
         self.bus = bus
         self.queue = queue
 
@@ -288,7 +331,12 @@ class MainWindow(QWidget):
 
         layout.addLayout(side_panel, 1)
         layout.addWidget(self.plot_canvas, 3)
+        self.status_bar = QLabel("Status: Idle")
+        layout.addWidget(self.status_bar, alignment=Qt.AlignmentFlag.AlignBottom)
         self.setLayout(layout)
+
+ 
+
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_plot)
