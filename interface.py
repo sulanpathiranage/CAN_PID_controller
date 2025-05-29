@@ -89,8 +89,6 @@ class PumpControlWidget(QWidget):
 import pyqtgraph as pg
 
 
-# pg.setConfigOption('background', 'w')     # white background
-# pg.setConfigOption('foreground', 'k')     # black text and gridlines
 
 class PyqtgraphPlotWidget(QWidget):
     def __init__(self):
@@ -307,6 +305,9 @@ class MainWindow(QWidget):
         self.logging = False
         self.log_file = None
         self.csv_writer = None
+        self.can_connected = False
+
+ 
 
         self.log_filename_entry = QLineEdit()
         self.log_filename_entry.setPlaceholderText("Enter log filename...")
@@ -335,6 +336,11 @@ class MainWindow(QWidget):
         layout.addWidget(self.status_bar, alignment=Qt.AlignmentFlag.AlignBottom)
         self.setLayout(layout)
 
+        self.bus = None
+        self.connect_button = QPushButton("Connect CAN")
+        self.connect_button.clicked.connect(self.toggle_can_connection)
+        side_panel.addWidget(self.connect_button)
+
  
 
 
@@ -347,6 +353,29 @@ class MainWindow(QWidget):
         
         self.last_pressures = [0.0, 0.0, 0.0]
         self.last_temps = [0.0, 0.0]
+
+    def toggle_can_connection(self):
+        if not self.can_connected:
+            try:
+                self.bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="virtual", bitrate=500000)
+                CanOpen.start_listener(self.bus, resolution=16, queue=self.queue)
+                asyncio.create_task(self.pump_sender_task())
+                self.status_bar.setText("Status: CAN Connected")
+                self.connect_button.setText("Disconnect CAN")
+                self.can_connected = True
+            except Exception as e:
+                QMessageBox.critical(self, "CAN Error", f"Failed to connect to CAN: {e}")
+                self.status_bar.setText("Status: CAN Connection Failed")
+        else:
+            try:
+                if self.bus:
+                    self.bus.shutdown()
+                self.bus = None
+                self.can_connected = False
+                self.connect_button.setText("Connect CAN")
+                self.status_bar.setText("Status: CAN Disconnected")
+            except Exception as e:
+                QMessageBox.warning(self, "Disconnect Error", f"Error during CAN disconnection: {e}")
 
 
     def toggle_logging(self):
@@ -420,7 +449,13 @@ class MainWindow(QWidget):
 
             raw1, raw2 = CanOpen.generate_outmm_msg(pump_on, speed)
             data = CanOpen.generate_uint_16bit_msg(int(raw1), int(raw2), 0, 0)
-            await CanOpen.send_can_message(self.bus, 0x600, data)
+
+            if self.can_connected and self.bus:
+                try:
+                    await CanOpen.send_can_message(self.bus, 0x600, data)
+                except Exception as e:
+                    self.status_bar.setText(f"CAN Send Error: {str(e)}")
+                await CanOpen.send_can_message(self.bus, 0x600, data)
 
             if self.logging:
                 timestamp = datetime.now().isoformat()
@@ -448,28 +483,20 @@ class MainWindow(QWidget):
 
 
 
+
 async def main_async():
-    channel = "PCAN_USBBUS1"
-    bustype = "virtual"
-    bitrate = 500000
-
-    try:
-        bus = can.interface.Bus(channel=channel, interface=bustype, bitrate=bitrate)
-    except Exception as e:
-        print(f"Failed to connect to CAN bus: {e}")
-        return
-
     queue = asyncio.Queue()
 
-    CanOpen.start_listener(bus, resolution=16, queue=queue)
-
     app = QApplication(sys.argv)
-    window = MainWindow(bus, queue)
+    window = MainWindow(bus=None, queue=queue)  # Don't pass the bus initially
     window.show()
+
+    asyncio.create_task(window.consumer_task())
 
     while True:
         await asyncio.sleep(0.01)
         app.processEvents()
+
 
 if __name__ == "__main__":
     asyncio.run(main_async())
