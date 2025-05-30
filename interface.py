@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
     QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
-    QPushButton, QDoubleSpinBox, QScrollArea
+    QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget
 )
 
 from PyQt6.QtCore import Qt, QTimer
@@ -25,6 +25,15 @@ from pid_controller import PIDController
 
 history_len = 100
 ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
+
+class SystemControlWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        
+
+
+
 
 class PumpControlWidget(QWidget):
     def __init__(self):
@@ -266,8 +275,14 @@ class MainWindow(QWidget):
         self.setWindowTitle("Instrumentation Dashboard")
         self.setMinimumSize(1200, 800)
 
-        self.setStyleSheet("color: white; background-color: #2e2e2e;")
+        self.setStyleSheet("color: white; background-color: #212121;")
 
+        self.pump_control = PumpControlWidget()
+        self.plot_canvas = PyqtgraphPlotWidget()
+        self.sensor_display = SensorDisplayWidget()
+        self.pid_control = PIDControlWidget()
+
+        # Logging control
         self.bus = bus
         self.queue = queue
         self.can_connected = False
@@ -314,7 +329,7 @@ class MainWindow(QWidget):
             border-radius: 5px;
         """)
 
-        main_layout = QHBoxLayout(self)
+        main_layout = QHBoxLayout()
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -415,14 +430,108 @@ class MainWindow(QWidget):
         main_layout.addWidget(scroll_area)
         main_layout.addWidget(self.plot_canvas, stretch=1)
 
-        self.setLayout(main_layout)
+        #self.setLayout(main_layout) Add layout to tab instead of self
+        #main_layout.addWidget(self.status_bar, alignment=Qt.AlignmentFlag.AlignBottom)
+        #self.setLayout(layout) 
 
+        #Create tab widget
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet("""
+                QTabWidget::pane {
+                    border: 1px solid #2e2e2e;
+                    background: #2e2e2e;
+                    padding: 5px;
+                }
+
+                QTabBar::tab {
+                    background: #E0E0E0;
+                    border: 1px solid #C4C4C3;
+                    border-bottom-color: #C2C7CB; /* same as pane border */
+                    border-top-left-radius: 4px;
+                    border-top-right-radius: 4px;
+                    padding: 6px 12px;
+                    margin-right: 2px;
+                    color: #333;
+                    font-weight: bold;
+                }
+
+                QTabBar::tab:selected {
+                    background: #FFFFFF;
+                    border-color: #C2C7CB;
+                    border-bottom-color: #FFFFFF; /* blend with pane */
+                    color: #000000;
+                }
+
+                QTabBar::tab:hover {
+                    background: #DDDDDD;
+                }
+        """)
+
+        #Create Tab pages
+        main_tab = QWidget()
+        system_control_tab = QWidget()
+        extra_tab = QWidget()
+
+        #Add labels and contents to tabs
+        main_tab_label = QLabel("Pump Control")
+        main_tab_layout = QVBoxLayout(main_tab) #input is the parent widget
+        main_tab_layout.addWidget(main_tab_label)
+
+        system_control_tab_label = QLabel("System Control")
+        system_control_tab_layout = QVBoxLayout(system_control_tab)
+        system_control_tab_layout.addWidget(system_control_tab_label)
+
+        extra_tab_label = QLabel("Empty")
+        extra_tab_layout = QVBoxLayout(extra_tab) #input is the parent widget
+        extra_tab_layout.addWidget(extra_tab_label)
+
+        self.tab_widget.addTab(main_tab, "Main Control Tab")
+        self.tab_widget.addTab(system_control_tab, "System Control Tab")
+        self.tab_widget.addTab(extra_tab, "Extra Tab")
+
+        main_tab_layout.addLayout(main_layout)
+
+        #Adding tab widget to new main layout set as vertical layout
+        main_Layout = QVBoxLayout()
+        main_Layout.addWidget(self.tab_widget)
+
+        self.setLayout(main_Layout)
+
+        # self.bus = None
+        # self.connect_button = QPushButton("Connect CAN")
+        # self.connect_button.clicked.connect(self.toggle_can_connection)
+        #side_panel.addWidget(self.connect_button) Side panel no longer exists
+
+        #Timer stuff
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_plot)
         self.timer.start(100)
 
         asyncio.create_task(self.consumer_task())
         asyncio.create_task(self.pump_sender_task())
+
+    def toggle_can_connection(self):
+        if not self.can_connected:
+            try:
+                self.bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="virtual", bitrate=500000)
+                CanOpen.start_listener(self.bus, resolution=16, queue=self.queue)
+                asyncio.create_task(self.pump_sender_task())
+                self.status_bar.setText("Status: CAN Connected")
+                self.connect_button.setText("Disconnect CAN")
+                self.can_connected = True
+            except Exception as e:
+                QMessageBox.critical(self, "CAN Error", f"Failed to connect to CAN: {e}")
+                self.status_bar.setText("Status: CAN Connection Failed")
+        else:
+            try:
+                if self.bus:
+                    self.bus.shutdown()
+                self.bus = None
+                self.can_connected = False
+                self.connect_button.setText("Connect CAN")
+                self.status_bar.setText("Status: CAN Disconnected")
+            except Exception as e:
+                QMessageBox.warning(self, "Disconnect Error", f"Error during CAN disconnection: {e}")
 
 
     def toggle_can_connection(self):
@@ -526,6 +635,7 @@ class MainWindow(QWidget):
                     await CanOpen.send_can_message(self.bus, 0x600, data)
                 except Exception as e:
                     self.status_bar.setText(f"CAN Send Error: {str(e)}")
+                await CanOpen.send_can_message(self.bus, 0x600, data)
 
             if self.logging:
                 timestamp = datetime.now().isoformat()
@@ -550,9 +660,6 @@ class MainWindow(QWidget):
             self.log_file.close()
             self.log_file = None
         event.accept()
-
-
-
 
 async def main_async():
     queue = asyncio.Queue()
