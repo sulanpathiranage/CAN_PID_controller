@@ -121,18 +121,28 @@ class PyqtgraphPlotWidget(QWidget):
             self.pressure_curves.append(curve)
             self.plot_area.addWidget(pw)
 
-        # Plot temperature graphs
-        for name in self.temperature_names:
-            pw = pg.PlotWidget(title=name)
-            pw.setLabel('left', "Temperature", units='°C')
-            pw.setLabel('bottom', "Time", units='s')
-            pw.setYRange(0, 150)
-            pw.setXRange(0, 10)
-            pw.showGrid(x=True, y=True)
-            pw.getAxis("left").setStyle(tickFont=pg.Qt.QtGui.QFont("Arial", 10))
-            curve = pw.plot(pen=pg.mkPen('r', width=2))
-            self.temperature_curves.append(curve)
-            self.plot_area.addWidget(pw)
+        # Plot temperature graph
+        temp_widget = pg.PlotWidget(title="Temperatures")
+        temp_widget.setLabel('left', "Temperature", units='°C')
+        temp_widget.setLabel('bottom', "Time", units='s')
+        temp_widget.setYRange(0, 150)
+        temp_widget.setXRange(0, 10)
+        temp_widget.showGrid(x=True, y=True)
+        temp_widget.getAxis("left").setStyle(tickFont=pg.Qt.QtGui.QFont("Arial", 10))
+
+        # Add legend to differentiate curves
+        legend = temp_widget.addLegend()
+
+        # Create curves for T01 and T02 with different colors
+        curve1 = temp_widget.plot(pen=pg.mkPen('r', width=2), name="T01")
+        curve2 = temp_widget.plot(pen=pg.mkPen('g', width=2), name="T02")
+
+        # Store curves for later updates
+        self.temperature_curves = [curve1, curve2]
+
+        # Add single widget to layout
+        self.plot_area.addWidget(temp_widget)
+
 
 
         self.layout.addLayout(self.plot_area, 5)
