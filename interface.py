@@ -6,11 +6,11 @@ from typing import List
 from can_open_protocol import CanOpen
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-    QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox, 
+    QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
     QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
-    QPushButton, QDoubleSpinBox
-
+    QPushButton, QDoubleSpinBox, QScrollArea
 )
+
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
 import matplotlib
@@ -89,8 +89,6 @@ class PumpControlWidget(QWidget):
 import pyqtgraph as pg
 
 
-# pg.setConfigOption('background', 'w')     # white background
-# pg.setConfigOption('foreground', 'k')     # black text and gridlines
 
 class PyqtgraphPlotWidget(QWidget):
     def __init__(self):
@@ -261,82 +259,163 @@ class PIDControlWidget(QWidget):
             return None
 
     
+
 class MainWindow(QWidget):
     def __init__(self, bus, queue):
         super().__init__()
-        self.setStyleSheet("""
-            QWidget {
-                font-family: 'Segoe UI';
-                font-size: 12pt;
-            }
-            QGroupBox {
-                border: 1px solid #aaa;
-                border-radius: 6px;
-                margin-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 3px 0 3px;
-            }
-            QPushButton {
-                background-color: #007ACC;
-                color: white;
-                font-weight: bold;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #ccc;
-            }
-            QLineEdit, QLabel {
-                padding: 2px;
-            }
-            """)
-
         self.setWindowTitle("Instrumentation Dashboard")
-        self.setMinimumSize(1200, 800)        
+        self.setMinimumSize(1200, 800)
+
+        self.setStyleSheet("color: white; background-color: #2e2e2e;")
+
         self.bus = bus
         self.queue = queue
-
-        self.pump_control = PumpControlWidget()
-        self.plot_canvas = PyqtgraphPlotWidget()
-        self.sensor_display = SensorDisplayWidget()
-        self.pid_control = PIDControlWidget()
-
-        # Logging control
+        self.can_connected = False
         self.logging = False
         self.log_file = None
         self.csv_writer = None
+        self.last_pressures = [0.0, 0.0, 0.0]
+        self.last_temps = [0.0, 0.0]
+
+        self.pump_control = PumpControlWidget()
+        self.sensor_display = SensorDisplayWidget()
+        self.plot_canvas = PyqtgraphPlotWidget()
+        self.pid_control = PIDControlWidget()
 
         self.log_filename_entry = QLineEdit()
         self.log_filename_entry.setPlaceholderText("Enter log filename...")
+
         self.log_button = QPushButton("Start Logging")
         self.log_button.clicked.connect(self.toggle_logging)
+        self.log_button.setStyleSheet("""
+            background-color: #007ACC;
+            color: white;
+            font-weight: bold;
+            border-radius: 5px;
+            padding: 4px 10px;
+        """)
 
+        self.connect_button = QPushButton("Connect CAN")
+        self.connect_button.setStyleSheet("""
+            background-color: #007ACC;
+            color: white;
+            font-weight: bold;
+            border-radius: 5px;
+            padding: 4px 10px;
+        """)
+        self.connect_button.clicked.connect(self.toggle_can_connection)
 
-        log_layout = QHBoxLayout()
-        log_layout.addWidget(QLabel("Log File:"))
-        log_layout.addWidget(self.log_filename_entry)
-        log_layout.addWidget(self.log_button)
-        log_widget = QWidget()
-        log_widget.setLayout(log_layout)
-
-        # Layout setup
-        layout = QHBoxLayout()
-        side_panel = QVBoxLayout()
-        side_panel.addWidget(self.pump_control)
-        side_panel.addWidget(self.sensor_display)
-        side_panel.addWidget(log_widget)  
-        side_panel.addWidget(self.pid_control)
-
-        layout.addLayout(side_panel, 1)
-        layout.addWidget(self.plot_canvas, 3)
         self.status_bar = QLabel("Status: Idle")
-        layout.addWidget(self.status_bar, alignment=Qt.AlignmentFlag.AlignBottom)
-        self.setLayout(layout)
+        self.status_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_bar.setStyleSheet("""
+            background-color: #333;
+            color: white;
+            padding: 4px;
+            border-radius: 5px;
+        """)
 
- 
+        main_layout = QHBoxLayout(self)
 
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setStyleSheet("""
+            QScrollBar:vertical {
+                background: transparent;
+                width: 8px;
+                margin: 2px 0 2px 0;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background: #888;
+                min-height: 20px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #555;
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+        """)
+
+        side_panel_content = QWidget()
+        scroll_area.setWidget(side_panel_content)
+
+        side_panel_layout = QVBoxLayout(side_panel_content)
+        side_panel_layout.setContentsMargins(10, 10, 10, 10)
+
+        side_panel_layout.addWidget(self.pump_control)
+        side_panel_layout.addWidget(self.sensor_display)
+
+        log_label = QLabel("Log File:")
+        log_row = QHBoxLayout()
+        log_row.setSpacing(5)
+        log_row.addWidget(log_label)
+        log_row.addWidget(self.log_filename_entry)
+        log_row_widget = QWidget()
+        log_row_widget.setLayout(log_row)
+
+        side_panel_layout.addWidget(log_row_widget)
+        side_panel_layout.addWidget(self.log_button)
+
+        # Rebuild PID control layout to display Kp Ki Kd horizontally
+        pid_label = QLabel("PID Controller")
+        pid_label.setStyleSheet("font-weight: bold")
+        pid_output_label = QLabel("PID Output: -- %")
+        pid_output_label.setStyleSheet("font-size: 14px;")
+
+        kp = QDoubleSpinBox(); kp.setValue(1.0)
+        ki = QDoubleSpinBox(); ki.setValue(0.0)
+        kd = QDoubleSpinBox(); kd.setValue(0.0)
+        setpoint = QDoubleSpinBox(); setpoint.setValue(100.0)
+
+        for box in [kp, ki, kd, setpoint]:
+            box.setRange(0, 1000); box.setDecimals(2)
+
+        label_row = QHBoxLayout()
+        label_row.addWidget(QLabel("Kp"))
+        label_row.addWidget(QLabel("Ki"))
+        label_row.addWidget(QLabel("Kd"))
+
+        input_row = QHBoxLayout()
+        input_row.addWidget(kp)
+        input_row.addWidget(ki)
+        input_row.addWidget(kd)
+
+        setpoint_label = QLabel("Setpoint")
+
+        enable_button = QPushButton("Enable PID")
+        enable_button.setStyleSheet("""
+            background-color: #007ACC;
+            color: white;
+            font-weight: bold;
+            border-radius: 5px;
+        """)
+
+        pid_group = QVBoxLayout()
+        pid_group.addWidget(pid_label)
+        pid_group.addWidget(pid_output_label)
+        pid_group.addLayout(label_row)
+        pid_group.addLayout(input_row)
+        pid_group.addWidget(setpoint_label)
+        pid_group.addWidget(setpoint)
+        pid_group.addWidget(enable_button)
+
+        pid_container = QWidget()
+        pid_container.setLayout(pid_group)
+
+        side_panel_layout.addWidget(pid_container)
+        side_panel_layout.addWidget(self.connect_button)
+        side_panel_layout.addWidget(self.status_bar)
+        side_panel_layout.addStretch()
+
+        scroll_area.setFixedWidth(320)
+        main_layout.addWidget(scroll_area)
+        main_layout.addWidget(self.plot_canvas, stretch=1)
+
+        self.setLayout(main_layout)
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_plot)
@@ -344,10 +423,43 @@ class MainWindow(QWidget):
 
         asyncio.create_task(self.consumer_task())
         asyncio.create_task(self.pump_sender_task())
-        
-        self.last_pressures = [0.0, 0.0, 0.0]
-        self.last_temps = [0.0, 0.0]
 
+
+    def toggle_can_connection(self):
+        if not self.can_connected:
+            try:
+                self.bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="virtual", bitrate=500000)
+                CanOpen.start_listener(self.bus, resolution=16, queue=self.queue)
+                asyncio.create_task(self.pump_sender_task())
+
+                self.status_bar.setText("Status: CAN Connected")
+                self.status_bar.setStyleSheet("""
+                    background-color: #228B22;
+                    color: white;
+                    padding: 4px;
+                    border-radius: 5px;
+                """)
+                self.connect_button.setText("Disconnect CAN")
+                self.can_connected = True
+            except Exception as e:
+                QMessageBox.critical(self, "CAN Error", f"Failed to connect to CAN: {e}")
+                self.status_bar.setText("Status: CAN Connection Failed")
+        else:
+            try:
+                if self.bus:
+                    self.bus.shutdown()
+                self.bus = None
+                self.can_connected = False
+                self.connect_button.setText("Connect CAN")
+                self.status_bar.setText("Status: Idle")
+                self.status_bar.setStyleSheet("""
+                    background-color: #333;
+                    color: white;
+                    padding: 4px;
+                    border-radius: 5px;
+                """)
+            except Exception as e:
+                QMessageBox.warning(self, "Disconnect Error", f"Error during CAN disconnection: {e}")
 
     def toggle_logging(self):
         if not self.logging:
@@ -355,10 +467,8 @@ class MainWindow(QWidget):
             if not filename:
                 QMessageBox.warning(self, "Missing Filename", "Please enter a log filename.")
                 return
-
             if not filename.endswith(".csv"):
                 filename += ".csv"
-
             try:
                 self.log_file = open(filename, 'w', newline='')
                 self.csv_writer = csv.writer(self.log_file)
@@ -369,11 +479,9 @@ class MainWindow(QWidget):
                 self.logging = True
                 self.log_button.setText("Stop Logging")
                 self.log_filename_entry.setEnabled(False)
-                print(f"Logging started: {filename}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to open file: {e}")
         else:
-            # Stop logging
             self.logging = False
             if self.log_file:
                 self.log_file.close()
@@ -381,20 +489,13 @@ class MainWindow(QWidget):
             self.csv_writer = None
             self.log_button.setText("Start Logging")
             self.log_filename_entry.setEnabled(True)
-            print("Logging stopped.")
-
 
     async def consumer_task(self):
         while True:
             node_id, data_type, values = await self.queue.get()
-            timestamp = datetime.now().isoformat()
 
             if data_type == 'voltage':
-                scaled_pressures = [
-                    values[0] * 30.0,
-                    values[1] * 60.0,
-                    values[2] * 60.0
-                ]
+                scaled_pressures = [values[0] * 30.0, values[1] * 60.0, values[2] * 60.0]
                 for i in range(3):
                     ch_data[i].append(scaled_pressures[i])
                 self.last_pressures = scaled_pressures
@@ -408,7 +509,6 @@ class MainWindow(QWidget):
                         deque([values[1]] * history_len, maxlen=history_len)
                     ]
 
-
             self.queue.task_done()
 
     async def pump_sender_task(self):
@@ -420,7 +520,12 @@ class MainWindow(QWidget):
 
             raw1, raw2 = CanOpen.generate_outmm_msg(pump_on, speed)
             data = CanOpen.generate_uint_16bit_msg(int(raw1), int(raw2), 0, 0)
-            await CanOpen.send_can_message(self.bus, 0x600, data)
+
+            if self.can_connected and self.bus:
+                try:
+                    await CanOpen.send_can_message(self.bus, 0x600, data)
+                except Exception as e:
+                    self.status_bar.setText(f"CAN Send Error: {str(e)}")
 
             if self.logging:
                 timestamp = datetime.now().isoformat()
@@ -439,7 +544,7 @@ class MainWindow(QWidget):
 
     def update_plot(self):
         self.plot_canvas.update_plot()
-        
+
     def closeEvent(self, event):
         if self.log_file:
             self.log_file.close()
@@ -448,28 +553,20 @@ class MainWindow(QWidget):
 
 
 
+
 async def main_async():
-    channel = "PCAN_USBBUS1"
-    bustype = "virtual"
-    bitrate = 500000
-
-    try:
-        bus = can.interface.Bus(channel=channel, interface=bustype, bitrate=bitrate)
-    except Exception as e:
-        print(f"Failed to connect to CAN bus: {e}")
-        return
-
     queue = asyncio.Queue()
 
-    CanOpen.start_listener(bus, resolution=16, queue=queue)
-
     app = QApplication(sys.argv)
-    window = MainWindow(bus, queue)
+    window = MainWindow(bus=None, queue=queue)  # Don't pass the bus initially
     window.show()
+
+    asyncio.create_task(window.consumer_task())
 
     while True:
         await asyncio.sleep(0.01)
         app.processEvents()
+
 
 if __name__ == "__main__":
     asyncio.run(main_async())
