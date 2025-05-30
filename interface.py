@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox, 
     QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
-    QPushButton, QDoubleSpinBox
+    QPushButton, QDoubleSpinBox, QTabWidget
 
 )
 from PyQt6.QtCore import Qt, QTimer
@@ -25,6 +25,15 @@ from pid_controller import PIDController
 
 history_len = 100
 ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
+
+class SystemControlWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        
+
+
+
 
 class PumpControlWidget(QWidget):
     def __init__(self):
@@ -296,6 +305,31 @@ class MainWindow(QWidget):
         self.bus = bus
         self.queue = queue
 
+        #Create tab widget
+        self.tab_widget = QTabWidget()
+
+        #Create Tab pages
+        main_tab = QWidget()
+        system_control_tab = QWidget()
+        extra_tab = QWidget()
+
+        #Add labels and contents to tabs
+        main_tab_label = QLabel("Pump Control")
+        main_tab_layout = QVBoxLayout(main_tab) #input is the parent widget
+        main_tab_layout.addWidget(main_tab_label)
+
+        system_control_tab_label = QLabel("System Control")
+        system_control_tab_layout = QVBoxLayout(system_control_tab)
+        system_control_tab_layout.addWidget(system_control_tab_label)
+
+        extra_tab_label = QLabel("Empty")
+        extra_tab_layout = QVBoxLayout(extra_tab) #input is the parent widget
+        extra_tab_layout.addWidget(extra_tab_label)
+
+        self.tab_widget.addTab(main_tab, "Main Control Tab")
+        self.tab_widget.addTab(system_control_tab, "System Control Tab")
+        self.tab_widget.addTab(extra_tab, "Extra Tab")
+
         self.pump_control = PumpControlWidget()
         self.plot_canvas = PyqtgraphPlotWidget()
         self.sensor_display = SensorDisplayWidget()
@@ -306,8 +340,6 @@ class MainWindow(QWidget):
         self.log_file = None
         self.csv_writer = None
         self.can_connected = False
-
- 
 
         self.log_filename_entry = QLineEdit()
         self.log_filename_entry.setPlaceholderText("Enter log filename...")
@@ -334,16 +366,21 @@ class MainWindow(QWidget):
         layout.addWidget(self.plot_canvas, 3)
         self.status_bar = QLabel("Status: Idle")
         layout.addWidget(self.status_bar, alignment=Qt.AlignmentFlag.AlignBottom)
-        self.setLayout(layout)
+        #self.setLayout(layout) Add layout to tab instead of self
+
+        main_tab_layout.addLayout(layout)
+
+        main_Layout = QVBoxLayout()
+        main_Layout.addWidget(self.tab_widget)
+
+        self.setLayout(main_Layout)
 
         self.bus = None
         self.connect_button = QPushButton("Connect CAN")
         self.connect_button.clicked.connect(self.toggle_can_connection)
         side_panel.addWidget(self.connect_button)
 
- 
-
-
+        #Timer stuff
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_plot)
         self.timer.start(100)
