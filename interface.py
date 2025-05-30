@@ -2,17 +2,31 @@ import sys
 import can
 import time 
 import asyncio
+import pyqtgraph as pg
 from typing import List
 from can_open_protocol import CanOpen
-from PyQt6.QtWidgets import (
+
+from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
     QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
     QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget
 )
 
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont
+
+# from PyQt6.QtWidgets import (
+#     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+#     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
+#     QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
+#     QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget
+# )
+
+
+from PySide6.QtCore import Qt, QTimer
+#from PyQt6.QtCore import Qt, QTimer
+
+from PySide6.QtGui import QFont
+#from PyQt6.QtGui import QFont
 import matplotlib
 matplotlib.use('QtAgg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -22,18 +36,12 @@ import csv
 from datetime import datetime
 from pid_controller import PIDController
 
-
 history_len = 100
 ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
 
-class SystemControlWidget(QWidget):
+class PermanentRightHandDisplay(QWidget):
     def __init__(self):
-        super().__init__()
-
-        
-
-
-
+        super().__init()
 
 class PumpControlWidget(QWidget):
     def __init__(self):
@@ -94,10 +102,6 @@ class PumpControlWidget(QWidget):
     def get_state(self):
         return int(self.pump_on_checkbox.isChecked()), self.speed_slider.value()
     
-
-import pyqtgraph as pg
-
-
 
 class PyqtgraphPlotWidget(QWidget):
     def __init__(self):
@@ -438,39 +442,56 @@ class MainWindow(QWidget):
         self.tab_widget = QTabWidget()
         self.tab_widget.setStyleSheet("""
                 QTabWidget::pane {
-                    border: 1px solid #2e2e2e;
+                    border: 1px solid #444444;
                     background: #2e2e2e;
                     padding: 5px;
                 }
 
                 QTabBar::tab {
-                    background: #E0E0E0;
-                    border: 1px solid #C4C4C3;
-                    border-bottom-color: #C2C7CB; /* same as pane border */
+                    background: #3a3a3a;
+                    border: 1px solid #555555;
+                    border-bottom-color: #2e2e2e;  /* blend with pane */
                     border-top-left-radius: 4px;
                     border-top-right-radius: 4px;
                     padding: 6px 12px;
                     margin-right: 2px;
-                    color: #333;
-                    font-weight: bold;
+                    color: #CCCCCC;
                 }
 
                 QTabBar::tab:selected {
-                    background: #FFFFFF;
-                    border-color: #C2C7CB;
-                    border-bottom-color: #FFFFFF; /* blend with pane */
-                    color: #000000;
+                    background: #2e2e2e;
+                    border-color: #888888;
+                    border-bottom-color: #2e2e2e;
+                    color: #FFFFFF;
                 }
 
                 QTabBar::tab:hover {
-                    background: #DDDDDD;
+                    background: #505050;
+                    color: #FFFFFF;
                 }
-        """)
+                """)
 
         #Create Tab pages
         main_tab = QWidget()
+        main_tab.setStyleSheet( """
+                QWidget {
+                    background-color: #2e2e2e;
+                }
+                """)
+        
         system_control_tab = QWidget()
+        system_control_tab.setStyleSheet( """
+                QWidget {
+                    background-color: #2e2e2e;
+                }
+                """)
+        
         extra_tab = QWidget()
+        extra_tab.setStyleSheet( """
+                QWidget {
+                    background-color: #2e2e2e;
+                }
+                """)
 
         #Add labels and contents to tabs
         main_tab_label = QLabel("Pump Control")
