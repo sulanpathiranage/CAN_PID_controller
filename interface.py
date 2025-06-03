@@ -36,12 +36,47 @@ import csv
 from datetime import datetime
 from pid_controller import PIDController
 
+#Local Imports
+from app_stylesheets import Stylesheets
+from NH3_pump_control import NH3PumpControlScene
+
 history_len = 100
 ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
 
 class PermanentRightHandDisplay(QWidget):
     def __init__(self):
-        super().__init()
+        super().__init__()
+
+        #Create Layout
+        rightHandVerticalLayout = QVBoxLayout()
+
+        #Create Contents
+        self.eStopButton = QPushButton("E-STOP")
+        self.eStopButton.setFixedSize(150, 100)
+        self.eStopButton.setStyleSheet(Stylesheets.EStopPushButtonStyleSheet())
+
+        self.safetyLabelOne = QLabel("Safety Critical Info Label 1")
+        self.safetyLabelTwo = QLabel("Safety Critical Info Label 2")
+        self.safetyLabelThree = QLabel("Safety Critical Info Label 3")
+        
+        self.safetyControlPushButtonOne = QPushButton("Safety Control One")
+        self.safetyControlPushButtonOne.setFixedSize(150, 80)
+        self.safetyControlPushButtonOne.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
+
+        self.safetyControlPushButtonTwo = QPushButton("Safety Control Two")
+        self.safetyControlPushButtonTwo.setFixedSize(150, 80)
+        self.safetyControlPushButtonTwo.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
+
+        #Put contents in layout
+        rightHandVerticalLayout.addWidget(self.safetyLabelOne)
+        rightHandVerticalLayout.addWidget(self.safetyLabelTwo)
+        rightHandVerticalLayout.addWidget(self.safetyLabelThree)
+        rightHandVerticalLayout.addWidget(self.safetyControlPushButtonOne)
+        rightHandVerticalLayout.addWidget(self.safetyControlPushButtonTwo)
+        rightHandVerticalLayout.addWidget(self.eStopButton)
+
+        #Set self "PermanentRightHandDisplay" widget layout
+        self.setLayout(rightHandVerticalLayout)
 
 class PumpControlWidget(QWidget):
     def __init__(self):
@@ -285,6 +320,8 @@ class MainWindow(QWidget):
         self.plot_canvas = PyqtgraphPlotWidget()
         self.sensor_display = SensorDisplayWidget()
         self.pid_control = PIDControlWidget()
+        self.permanentRightHandControl = PermanentRightHandDisplay()
+        self.nh3pump = NH3PumpControlScene()
 
         # Logging control
         self.bus = bus
@@ -296,42 +333,20 @@ class MainWindow(QWidget):
         self.last_pressures = [0.0, 0.0, 0.0]
         self.last_temps = [0.0, 0.0]
 
-        self.pump_control = PumpControlWidget()
-        self.sensor_display = SensorDisplayWidget()
-        self.plot_canvas = PyqtgraphPlotWidget()
-        self.pid_control = PIDControlWidget()
-
         self.log_filename_entry = QLineEdit()
         self.log_filename_entry.setPlaceholderText("Enter log filename...")
 
         self.log_button = QPushButton("Start Logging")
         self.log_button.clicked.connect(self.toggle_logging)
-        self.log_button.setStyleSheet("""
-            background-color: #007ACC;
-            color: white;
-            font-weight: bold;
-            border-radius: 5px;
-            padding: 4px 10px;
-        """)
+        self.log_button.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
 
         self.connect_button = QPushButton("Connect CAN")
-        self.connect_button.setStyleSheet("""
-            background-color: #007ACC;
-            color: white;
-            font-weight: bold;
-            border-radius: 5px;
-            padding: 4px 10px;
-        """)
+        self.connect_button.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
         self.connect_button.clicked.connect(self.toggle_can_connection)
 
         self.status_bar = QLabel("Status: Idle")
         self.status_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_bar.setStyleSheet("""
-            background-color: #333;
-            color: white;
-            padding: 4px;
-            border-radius: 5px;
-        """)
+        self.status_bar.setStyleSheet(Stylesheets.LabelStlyeSheet())
 
         main_layout = QHBoxLayout()
 
@@ -406,12 +421,7 @@ class MainWindow(QWidget):
         setpoint_label = QLabel("Setpoint")
 
         enable_button = QPushButton("Enable PID")
-        enable_button.setStyleSheet("""
-            background-color: #007ACC;
-            color: white;
-            font-weight: bold;
-            border-radius: 5px;
-        """)
+        enable_button.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
 
         pid_group = QVBoxLayout()
         pid_group.addWidget(pid_label)
@@ -440,36 +450,7 @@ class MainWindow(QWidget):
 
         #Create tab widget
         self.tab_widget = QTabWidget()
-        self.tab_widget.setStyleSheet("""
-                QTabWidget::pane {
-                    border: 1px solid #444444;
-                    background: #2e2e2e;
-                    padding: 5px;
-                }
-
-                QTabBar::tab {
-                    background: #3a3a3a;
-                    border: 1px solid #555555;
-                    border-bottom-color: #2e2e2e;  /* blend with pane */
-                    border-top-left-radius: 4px;
-                    border-top-right-radius: 4px;
-                    padding: 6px 12px;
-                    margin-right: 2px;
-                    color: #CCCCCC;
-                }
-
-                QTabBar::tab:selected {
-                    background: #2e2e2e;
-                    border-color: #888888;
-                    border-bottom-color: #2e2e2e;
-                    color: #FFFFFF;
-                }
-
-                QTabBar::tab:hover {
-                    background: #505050;
-                    color: #FFFFFF;
-                }
-                """)
+        self.tab_widget.setStyleSheet(Stylesheets.TabWidgetStyleSheet())
 
         #Create Tab pages
         main_tab = QWidget()
@@ -501,6 +482,7 @@ class MainWindow(QWidget):
         system_control_tab_label = QLabel("System Control")
         system_control_tab_layout = QVBoxLayout(system_control_tab)
         system_control_tab_layout.addWidget(system_control_tab_label)
+        system_control_tab_layout.addWidget(self.nh3pump)
 
         extra_tab_label = QLabel("Empty")
         extra_tab_layout = QVBoxLayout(extra_tab) #input is the parent widget
@@ -513,8 +495,9 @@ class MainWindow(QWidget):
         main_tab_layout.addLayout(main_layout)
 
         #Adding tab widget to new main layout set as vertical layout
-        main_Layout = QVBoxLayout()
+        main_Layout = QHBoxLayout()
         main_Layout.addWidget(self.tab_widget)
+        main_Layout.addWidget(self.permanentRightHandControl)
 
         self.setLayout(main_Layout)
 
