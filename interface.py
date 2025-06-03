@@ -39,6 +39,7 @@ from pid_controller import PIDController
 #Local Imports
 from app_stylesheets import Stylesheets
 from NH3_pump_control import NH3PumpControlScene
+from NH3_vaporizer_control import NH3VaporizerControlScene
 
 history_len = 100
 ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
@@ -322,6 +323,7 @@ class MainWindow(QWidget):
         self.pid_control = PIDControlWidget()
         self.permanentRightHandControl = PermanentRightHandDisplay()
         self.nh3pump = NH3PumpControlScene()
+        self.nh3vaporizer = NH3VaporizerControlScene()
 
         # Logging control
         self.bus = bus
@@ -460,15 +462,15 @@ class MainWindow(QWidget):
                 }
                 """)
         
-        system_control_tab = QWidget()
-        system_control_tab.setStyleSheet( """
+        nh3_pump_test_tab = QWidget()
+        nh3_pump_test_tab.setStyleSheet( """
                 QWidget {
                     background-color: #2e2e2e;
                 }
                 """)
         
-        extra_tab = QWidget()
-        extra_tab.setStyleSheet( """
+        nh3_vaporizer_test_tab = QWidget()
+        nh3_vaporizer_test_tab.setStyleSheet( """
                 QWidget {
                     background-color: #2e2e2e;
                 }
@@ -479,18 +481,15 @@ class MainWindow(QWidget):
         main_tab_layout = QVBoxLayout(main_tab) #input is the parent widget
         main_tab_layout.addWidget(main_tab_label)
 
-        system_control_tab_label = QLabel("System Control")
-        system_control_tab_layout = QVBoxLayout(system_control_tab)
-        system_control_tab_layout.addWidget(system_control_tab_label)
-        system_control_tab_layout.addWidget(self.nh3pump)
+        nh3_pump_test_tab_layout = QVBoxLayout(nh3_pump_test_tab)
+        nh3_pump_test_tab_layout.addWidget(self.nh3pump)
 
-        extra_tab_label = QLabel("Empty")
-        extra_tab_layout = QVBoxLayout(extra_tab) #input is the parent widget
-        extra_tab_layout.addWidget(extra_tab_label)
+        nh3_vaporizer_test_layout = QVBoxLayout(nh3_vaporizer_test_tab) #input is the parent widget
+        nh3_vaporizer_test_layout.addWidget(self.nh3vaporizer)
 
         self.tab_widget.addTab(main_tab, "Main Control Tab")
-        self.tab_widget.addTab(system_control_tab, "System Control Tab")
-        self.tab_widget.addTab(extra_tab, "Extra Tab")
+        self.tab_widget.addTab(nh3_pump_test_tab, "NH3 PUMP TEST-1")
+        self.tab_widget.addTab(nh3_vaporizer_test_tab, "NH3 VAPORIZER TEST-1")
 
         main_tab_layout.addLayout(main_layout)
 

@@ -133,64 +133,58 @@ class Stylesheets:
     
     def GraphicsViewStyleSheet():
         graphicsViewStyle = """
+            /* QGraphicsView background optional */
             QGraphicsView {
                 background-color: #f9f9f9;
             }
 
-            /* Vertical Scrollbar */
+            /* Common scrollbar settings */
+            QScrollBar:horizontal,
             QScrollBar:vertical {
                 border: none;
-                background: transparent;
-                width: 8px;
-                margin: 2px 0 2px 0;
+                background: #f9f9f9; /* removes scroll area background */
+                margin: 0px;
             }
 
+            /* Scrollbar handle (the draggable part) */
+            QScrollBar::handle:horizontal,
             QScrollBar::handle:vertical {
-                background: #cccccc;
-                min-height: 20px;
+                background: #444444; /* dark, modern look */
                 border-radius: 4px;
             }
 
+            /* Hover effect */
+            QScrollBar::handle:horizontal:hover,
             QScrollBar::handle:vertical:hover {
-                background: #999999;
+                background: #666666;
             }
 
-            /* Remove arrows and top/bottom buttons */
+            /* Remove the top/bottom or left/right buttons */
             QScrollBar::add-line:vertical,
-            QScrollBar::sub-line:vertical {
-                height: 0;
-                subcontrol-origin: margin;
-            }
-
-            /* Horizontal Scrollbar */
-            QScrollBar:horizontal {
-                border: none;
-                background: transparent;
-                height: 8px;
-                margin: 0 2px 0 2px;
-            }
-
-            QScrollBar::handle:horizontal {
-                background: #cccccc;
-                min-width: 20px;
-                border-radius: 4px;
-            }
-
-            QScrollBar::handle:horizontal:hover {
-                background: #999999;
-            }
-
-            /* Remove arrows and left/right buttons */
+            QScrollBar::sub-line:vertical,
             QScrollBar::add-line:horizontal,
             QScrollBar::sub-line:horizontal {
-                width: 0;
-                subcontrol-origin: margin;
+                background: none;
+                border: none;
+                width: 0px;
+                height: 0px;
             }
 
-            /* Optional: hide the scrollbar background track */
-            QScrollBar::add-page,
-            QScrollBar::sub-page {
+            /* Remove the track area between the handle and the buttons */
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical,
+            QScrollBar::add-page:horizontal,
+            QScrollBar::sub-page:horizontal {
                 background: none;
+            }
+
+            /* Optional: control size */
+            QScrollBar:vertical {
+                width: 8px;
+            }
+
+            QScrollBar:horizontal {
+                height: 8px;
             }
         """
         return graphicsViewStyle
