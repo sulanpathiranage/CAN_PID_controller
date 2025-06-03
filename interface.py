@@ -4,15 +4,14 @@ import time
 import asyncio
 from typing import List
 from can_open_protocol import CanOpen
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox, 
     QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
     QPushButton, QDoubleSpinBox
-
 )
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QFont
 import matplotlib
 matplotlib.use('QtAgg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -21,7 +20,7 @@ from collections import deque
 import csv
 from datetime import datetime
 from pid_controller import PIDController
-
+import pyqtgraph as pg
 
 history_len = 100
 ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
@@ -85,9 +84,6 @@ class PumpControlWidget(QWidget):
     def get_state(self):
         return int(self.pump_on_checkbox.isChecked()), self.speed_slider.value()
     
-
-import pyqtgraph as pg
-
 
 
 class PyqtgraphPlotWidget(QWidget):
