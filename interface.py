@@ -13,20 +13,8 @@ from PySide6.QtWidgets import (
     QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget
 )
 
-
-# from PyQt6.QtWidgets import (
-#     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-#     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
-#     QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
-#     QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget
-# )
-
-
 from PySide6.QtCore import Qt, QTimer
-#from PyQt6.QtCore import Qt, QTimer
-
 from PySide6.QtGui import QFont
-#from PyQt6.QtGui import QFont
 import matplotlib
 matplotlib.use('QtAgg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -34,9 +22,9 @@ import matplotlib.pyplot as plt
 from collections import deque
 import csv
 from datetime import datetime
-from pid_controller import PIDController
 
 #Local Imports
+from pid_controller import PIDController
 from app_stylesheets import Stylesheets
 from NH3_pump_control import NH3PumpControlScene
 from NH3_vaporizer_control import NH3VaporizerControlScene
@@ -95,7 +83,7 @@ class PumpControlWidget(QWidget):
         self.speed_entry.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.output_label = QLabel("PID Output: -- %")
-        self.output_label.setStyleSheet("font-size: 14px; color: #2e8b57;")
+        #self.output_label.setStyleSheet(Stylesheets.LabelStyleSheet())
 
         self.speed_slider.valueChanged.connect(self.update_entry)
         self.speed_entry.editingFinished.connect(self.update_slider)
@@ -208,14 +196,14 @@ class SensorDisplayWidget(QWidget):
 
         # Pressure section title
         pressure_title = QLabel("Pressure Sensors")
-        pressure_title.setStyleSheet("font-weight: bold; font-size: 16px;")
+        pressure_title.setStyleSheet(Stylesheets.LabelStyleSheet())
         layout.addWidget(pressure_title)
 
         # Pressure labels
         for name in ["PT1401", "PT1402", "PT1403"]:
             label = QLabel(f"{name}: -- psi")
             label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            label.setStyleSheet("font-size: 14px;")
+            label.setStyleSheet(Stylesheets.LabelStlyeSheet())
             self.pressure_labels.append(label)
             layout.addWidget(label)
 
@@ -223,14 +211,14 @@ class SensorDisplayWidget(QWidget):
 
         # Temperature section title
         temp_title = QLabel("Temperature Sensors")
-        temp_title.setStyleSheet("font-weight: bold; font-size: 16px;")
+        temp_title.setStyleSheet(Stylesheets.LabelStlyeSheet())
         layout.addWidget(temp_title)
 
         # Temperature labels
         for name in ["T01", "T02"]:
             label = QLabel(f"{name}: -- °C")
             label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            label.setStyleSheet("font-size: 14px;")
+            label.setStyleSheet(Stylesheets.LabelStlyeSheet())
             self.temperature_labels.append(label)
             layout.addWidget(label)
 
@@ -255,8 +243,10 @@ class PIDControlWidget(QWidget):
         layout = QVBoxLayout()
         self.setLayout(layout)
         self.output_label = QLabel("PID Output: -- %")
-        self.output_label.setStyleSheet("font-size: 14px;")
-        layout.addWidget(QLabel("PID Controller"))
+        self.output_label.setStyleSheet(Stylesheets.LabelStlyeSheet())
+        self.pid_label = QLabel("PID Controller")
+        self.pid_label.setStyleSheet(Stylesheets.LabelStlyeSheet())
+        layout.addWidget(self.pid_label)
                 
         layout.addWidget(self.output_label)
 
@@ -307,14 +297,13 @@ class PIDControlWidget(QWidget):
             self.output_label.setText("PID Output: -- %")
             return None
 
-    
+class PumpControlWindow(QWidget):
 
-class MainWindow(QWidget):
     def __init__(self, bus, queue):
         super().__init__()
+
         self.setWindowTitle("Instrumentation Dashboard")
         self.setMinimumSize(1200, 800)
-
         self.setStyleSheet("color: white; background-color: #212121;")
 
         self.pump_control = PumpControlWidget()
@@ -322,8 +311,6 @@ class MainWindow(QWidget):
         self.sensor_display = SensorDisplayWidget()
         self.pid_control = PIDControlWidget()
         self.permanentRightHandControl = PermanentRightHandDisplay()
-        self.nh3pump = NH3PumpControlScene()
-        self.nh3vaporizer = NH3VaporizerControlScene()
 
         # Logging control
         self.bus = bus
@@ -355,26 +342,7 @@ class MainWindow(QWidget):
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll_area.setStyleSheet("""
-            QScrollBar:vertical {
-                background: transparent;
-                width: 8px;
-                margin: 2px 0 2px 0;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:vertical {
-                background: #888;
-                min-height: 20px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #555;
-            }
-            QScrollBar::add-line:vertical,
-            QScrollBar::sub-line:vertical {
-                height: 0;
-            }
-        """)
+        scroll_area.setStyleSheet(Stylesheets.GenericScrollAreaStyleSheet())
 
         side_panel_content = QWidget()
         scroll_area.setWidget(side_panel_content)
@@ -446,64 +414,11 @@ class MainWindow(QWidget):
         main_layout.addWidget(scroll_area)
         main_layout.addWidget(self.plot_canvas, stretch=1)
 
-        #self.setLayout(main_layout) Add layout to tab instead of self
-        #main_layout.addWidget(self.status_bar, alignment=Qt.AlignmentFlag.AlignBottom)
-        #self.setLayout(layout) 
+        self.superLayout = QHBoxLayout()
+        self.superLayout.addLayout(main_layout)
+        self.superLayout.addWidget(self.permanentRightHandControl)
 
-        #Create tab widget
-        self.tab_widget = QTabWidget()
-        self.tab_widget.setStyleSheet(Stylesheets.TabWidgetStyleSheet())
-
-        #Create Tab pages
-        main_tab = QWidget()
-        main_tab.setStyleSheet( """
-                QWidget {
-                    background-color: #2e2e2e;
-                }
-                """)
-        
-        nh3_pump_test_tab = QWidget()
-        nh3_pump_test_tab.setStyleSheet( """
-                QWidget {
-                    background-color: #2e2e2e;
-                }
-                """)
-        
-        nh3_vaporizer_test_tab = QWidget()
-        nh3_vaporizer_test_tab.setStyleSheet( """
-                QWidget {
-                    background-color: #2e2e2e;
-                }
-                """)
-
-        #Add labels and contents to tabs
-        main_tab_label = QLabel("Pump Control")
-        main_tab_layout = QVBoxLayout(main_tab) #input is the parent widget
-        main_tab_layout.addWidget(main_tab_label)
-
-        nh3_pump_test_tab_layout = QVBoxLayout(nh3_pump_test_tab)
-        nh3_pump_test_tab_layout.addWidget(self.nh3pump)
-
-        nh3_vaporizer_test_layout = QVBoxLayout(nh3_vaporizer_test_tab) #input is the parent widget
-        nh3_vaporizer_test_layout.addWidget(self.nh3vaporizer)
-
-        self.tab_widget.addTab(main_tab, "Main Control Tab")
-        self.tab_widget.addTab(nh3_pump_test_tab, "NH3 PUMP TEST-1")
-        self.tab_widget.addTab(nh3_vaporizer_test_tab, "NH3 VAPORIZER TEST-1")
-
-        main_tab_layout.addLayout(main_layout)
-
-        #Adding tab widget to new main layout set as vertical layout
-        main_Layout = QHBoxLayout()
-        main_Layout.addWidget(self.tab_widget)
-        main_Layout.addWidget(self.permanentRightHandControl)
-
-        self.setLayout(main_Layout)
-
-        # self.bus = None
-        # self.connect_button = QPushButton("Connect CAN")
-        # self.connect_button.clicked.connect(self.toggle_can_connection)
-        #side_panel.addWidget(self.connect_button) Side panel no longer exists
+        self.setLayout(self.superLayout)
 
         #Timer stuff
         self.timer = QTimer()
@@ -664,14 +579,52 @@ class MainWindow(QWidget):
             self.log_file = None
         event.accept()
 
+class PAndIDGraphicWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        self.setWindowTitle("P&ID Schematics")
+        self.setMinimumSize(800, 800)
+        self.setStyleSheet("color: white; background-color: #212121;")
+
+        tabWindowLayout = QVBoxLayout()
+        self.nh3pump = NH3PumpControlScene()
+        self.nh3vaporizer = NH3VaporizerControlScene()
+
+        #Create tab widget
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet(Stylesheets.TabWidgetStyleSheet())
+
+        #Create Tab pages
+        nh3_pump_test_tab = QWidget()
+        nh3_vaporizer_test_tab = QWidget()
+        
+        nh3_pump_test_tab.setStyleSheet("background-color: #2e2e2e;")
+        nh3_vaporizer_test_tab.setStyleSheet("background-color: #2e2e2e;")
+
+        #Add labels and contents to tabs
+        nh3_pump_test_tab_layout = QVBoxLayout(nh3_pump_test_tab)
+        nh3_pump_test_tab_layout.addWidget(self.nh3pump)
+
+        nh3_vaporizer_test_layout = QVBoxLayout(nh3_vaporizer_test_tab) #input is the parent widget
+        nh3_vaporizer_test_layout.addWidget(self.nh3vaporizer)
+
+        self.tab_widget.addTab(nh3_pump_test_tab, "NH3 PUMP TEST-1")
+        self.tab_widget.addTab(nh3_vaporizer_test_tab, "NH3 VAPORIZER TEST-1")
+        tabWindowLayout.addWidget(self.tab_widget)
+        self.setLayout(tabWindowLayout)
+
 async def main_async():
     queue = asyncio.Queue()
 
     app = QApplication(sys.argv)
-    window = MainWindow(bus=None, queue=queue)  # Don't pass the bus initially
-    window.show()
 
-    asyncio.create_task(window.consumer_task())
+    controlWindow = PumpControlWindow(bus=None, queue=queue)  # Don't pass the bus initially
+    pAndIdGraphicWindow = PAndIDGraphicWindow()
+    controlWindow.show()
+    pAndIdGraphicWindow.show()
+
+    asyncio.create_task(controlWindow.consumer_task())
 
     while True:
         await asyncio.sleep(0.01)

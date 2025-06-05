@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
     QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget,
     QGraphicsView, QGraphicsScene, QGraphicsPolygonItem, QGraphicsTextItem,
-    QGraphicsRectItem, QGraphicsLineItem, QDialog)
+    QGraphicsRectItem, QGraphicsLineItem, QDialog, QGraphicsProxyWidget)
 
 from PySide6.QtCore import QPointF
 from PySide6.QtGui import QPolygonF, QFont, QColor, QPen
@@ -16,6 +16,9 @@ from PySide6.QtGui import QFont
 from PySide6.QtCore import QLineF
 
 from app_stylesheets import Stylesheets
+from PySide6.QtWidgets import *
+from PySide6.QtGui import *
+from PySide6.QtCore import *
 
 import time
 import random
@@ -173,12 +176,10 @@ class SchematicHelperFunctions:
     
     def AddCoordinateGrid(scene, spacing=50, grid_size=1000):
         """
-        Adds a coordinate grid to the scene to help with layout reference.
-        
-        Parameters:
-            spacing (int): Distance between grid lines in scene units
-            grid_size (int): Half-width/height of the grid extent (positive and negative)
+        Adds a coordinate grid to the scene, tagged for later removal.
         """
+        GRID_TAG = "grid"
+
         pen = QPen(QColor(200, 200, 200))
         pen.setStyle(Qt.DotLine)
         pen.setWidth(1)
@@ -187,19 +188,26 @@ class SchematicHelperFunctions:
         for x in range(-grid_size, grid_size + spacing, spacing):
             line = scene.addLine(x, -grid_size, x, grid_size, pen)
             line.setZValue(-1)
+            line.setData(0, GRID_TAG)
 
         # Horizontal lines
         for y in range(-grid_size, grid_size + spacing, spacing):
             line = scene.addLine(-grid_size, y, grid_size, y, pen)
             line.setZValue(-1)
+            line.setData(0, GRID_TAG)
 
-        # Draw origin marker
+        # Origin marker (thicker red lines)
         origin_pen = QPen(Qt.red)
         origin_pen.setWidth(2)
-        scene.addLine(-10, 0, 10, 0, origin_pen)  # X axis at origin
-        scene.addLine(0, -10, 0, 10, origin_pen)  # Y axis at origin
+        line_x = scene.addLine(-10, 0, 10, 0, origin_pen)
+        line_x.setZValue(-1)
+        line_x.setData(0, GRID_TAG)
 
-        # Optionally add labels at major points
+        line_y = scene.addLine(0, -10, 0, 10, origin_pen)
+        line_y.setZValue(-1)
+        line_y.setData(0, GRID_TAG)
+
+        # Axis labels
         font = QFont("Arial", 10)
         for x in range(-grid_size, grid_size + spacing, spacing):
             if x == 0:
@@ -209,6 +217,7 @@ class SchematicHelperFunctions:
             label.setDefaultTextColor(Qt.darkGray)
             label.setPos(x + 2, 2)
             label.setZValue(-1)
+            label.setData(0, GRID_TAG)
             scene.addItem(label)
 
         for y in range(-grid_size, grid_size + spacing, spacing):
@@ -219,7 +228,55 @@ class SchematicHelperFunctions:
             label.setDefaultTextColor(Qt.darkGray)
             label.setPos(2, y + 2)
             label.setZValue(-1)
+            label.setData(0, GRID_TAG)
             scene.addItem(label)
+
+    def RemoveCoordinateGrid(scene):
+        """
+        Removes all items previously added by AddCoordinateGrid using the 'grid' tag.
+        """
+        GRID_TAG = "grid"
+        for item in scene.items():
+            if item.data(0) == GRID_TAG:
+                scene.removeItem(item)
+
+class RoundedProxy(QGraphicsProxyWidget):
+    def paint(self, painter, option, widget):
+        path = QPainterPath()
+        path.addRoundedRect(self.boundingRect(), 3, 3)
+        painter.setClipPath(path)
+        super().paint(painter, option, widget)
+
+class CreatePlotButton():
+
+    def __init__(self, scene, func, buttonName="Plot", xCoord=0, yCoord=0):
+        super().__init__()
+        
+        self.pushButton = QPushButton(buttonName)
+        self.pushButton.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
+        self.pushButton.setFixedSize(80, 30)
+        self.pushButton.clicked.connect(func)
+        self.pushButtonProxy = RoundedProxy()
+        self.pushButtonProxy.setWidget(self.pushButton)
+        scene.addItem(self.pushButtonProxy)
+        self.pushButtonProxy.setPos(xCoord, yCoord)
+
+class CreatePlotLabel():
+
+    def __init__(self, scene, xCoord=0, yCoord=0):
+        super().__init__()
+
+        self.label = QLabel("000")
+        self.label.setStyleSheet(Stylesheets.PlotLabelStyle())
+        self.label.setFixedSize(80, 30)
+        self.label.setAlignment(Qt.AlignCenter)
+        self.labelProxy = RoundedProxy()
+        self.labelProxy.setWidget(self.label)
+        scene.addItem(self.labelProxy)
+        self.labelProxy.setPos(xCoord, yCoord)
+    
+    def setLabelText(self, text="---"):
+        self.label.setText(text)
 
 class CreatePlotWindow(QDialog):
 

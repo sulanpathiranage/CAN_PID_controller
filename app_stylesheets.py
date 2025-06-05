@@ -3,31 +3,25 @@ class Stylesheets:
 
     def GenericPushButtonStyleSheet():
         pushButtonStyle = """
-            QWidget {
-                background-color: #007ACC;
-                color: white;
-                font-weight: bold;
-                border-radius: 5px;
-                padding: 4px 10px;
-                border: none;
-            }
-
             QPushButton {
-                background-color: #007ACC;
-                color: white;
-                font-weight: bold;
-                border-radius: 5px;
+                background-color: #486a8c;       /* Muted blue-gray */
+                color: #ffffff;
+                border-radius: 2px;
                 padding: 4px 10px;
-                border: none;
-                min-height: 20px;
+                font-weight: 500;
             }
 
             QPushButton:hover {
-                background-color: #0099FF;
+                background-color: #4c5a6a;
             }
 
             QPushButton:pressed {
-                background-color: #005599;
+                background-color: #2c3a4a;
+            }
+
+            QPushButton:disabled {
+                background-color: #2a2f35;
+                color: #888888;
             }
         """
         return pushButtonStyle
@@ -38,7 +32,7 @@ class Stylesheets:
             background-color: #c94444;
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: 2px;
             padding: 8px 16px;
             font-weight: 500;
             font-size: 14px;
@@ -64,27 +58,51 @@ class Stylesheets:
     def LabelStlyeSheet():
         labelStyleSheet = """
         QLabel {
-            color: #2c3e50;
+            color: #FFFFFF;
             font-family: "Segoe UI", Arial, sans-serif;
             font-size: 12px;
-            font-weight: 500;
-            padding: 2px 4px;
+            font-weight: normal;
+            padding: 4px 6px;
             background-color: transparent;
             border: none;
         }
 
         QLabel[class="header"] {
-            font-size: 16px;
+            font-size: 20px;
             font-weight: bold;
-            color: #34495e;
-            padding: 8px 4px;
+            color: #FFFFFF;
+            padding: 8px 6px;
         }
 
         QLabel[class="subtitle"] {
-            font-size: 10px;
-            color: #7f8c8d;
+            font-size: 13px;
+            color: #CCCCCC;
             font-weight: normal;
+            padding: 2px 6px;
+        }
+
+        QLabel[class="warning"] {
+            color: #FFA500;
+            font-weight: bold;
+        }
+
+        QLabel[class="error"] {
+            color: #FF5555;
+            font-weight: bold;
         }"""
+        return labelStyleSheet
+    
+    def PlotLabelStyle():
+        plotLabelStyle = """
+        QLabel {
+            background-color: #2e2e2e;  /* Dark grey */
+            color: white;               /* White text */
+            font-size: 18px;            /* Large text */
+            border-radius: 10px;        /* Rounded corners */
+            padding: 6px
+        }
+        """
+        return plotLabelStyle
     
     def LineEditStyleSheet():
         lineEditStyle = ""
@@ -124,61 +142,87 @@ class Stylesheets:
         return tabWidgetStyle
     
     def CheckBoxStyleSheet():
-        checkBoxStyle = ""
+        checkBoxStyle = """
+            QCheckBox {
+                spacing: 8px;
+                color: #dddddd;
+                font-size: 13px;
+            }
+
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border-radius: 3px;
+                border: 2px solid #555555;
+                background-color: #2e2e2e;
+            }
+
+            QCheckBox::indicator:hover {
+                border: 2px solid #888888;
+            }
+
+            QCheckBox::indicator:checked {
+                background-color: #4CAF50;
+                border: 2px solid #4CAF50;
+            }
+
+            QCheckBox::indicator:disabled {
+                background-color: #444444;
+                border: 2px solid #333333;
+            }
+            """
         return checkBoxStyle
-    
-    def WidgetStyleSheet():
-        widgetStyle = ""
-        return widgetStyle
     
     def GraphicsViewStyleSheet():
         graphicsViewStyle = """
-            /* QGraphicsView background optional */
             QGraphicsView {
                 background-color: #f9f9f9;
+                border-radius: 4px;
+                border: 1px solid #ccc;
             }
 
-            /* Common scrollbar settings */
-            QScrollBar:horizontal,
-            QScrollBar:vertical {
-                border: none;
-                background: #f9f9f9; /* removes scroll area background */
+            QScrollBar:horizontal {
+                background: #f9f9f9;  /* Avoid leaking background */
                 margin: 0px;
+                border-bottom-left: 2px;
             }
 
-            /* Scrollbar handle (the draggable part) */
+            QScrollBar:vertical {
+                background: #f9f9f9;  /* Avoid leaking background */
+                margin: 0px;
+                border-top-right: 2px;
+            }
+
             QScrollBar::handle:horizontal,
             QScrollBar::handle:vertical {
-                background: #444444; /* dark, modern look */
-                border-radius: 4px;
+                background: #444444;
+                border-radius: 4px; /* Visual roundness */
+                min-height: 20px;
+                min-width: 20px;
             }
 
-            /* Hover effect */
             QScrollBar::handle:horizontal:hover,
             QScrollBar::handle:vertical:hover {
                 background: #666666;
             }
 
-            /* Remove the top/bottom or left/right buttons */
-            QScrollBar::add-line:vertical,
-            QScrollBar::sub-line:vertical,
             QScrollBar::add-line:horizontal,
-            QScrollBar::sub-line:horizontal {
+            QScrollBar::sub-line:horizontal,
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
                 background: none;
                 border: none;
                 width: 0px;
                 height: 0px;
             }
 
-            /* Remove the track area between the handle and the buttons */
-            QScrollBar::add-page:vertical,
-            QScrollBar::sub-page:vertical,
             QScrollBar::add-page:horizontal,
-            QScrollBar::sub-page:horizontal {
+            QScrollBar::sub-page:horizontal,
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
                 background: none;
             }
 
-            /* Optional: control size */
             QScrollBar:vertical {
                 width: 8px;
             }
@@ -188,3 +232,63 @@ class Stylesheets:
             }
         """
         return graphicsViewStyle
+    
+    def GenericScrollAreaStyleSheet():
+        genericScrollAreaStyleSheet = """
+            QScrollBar:vertical {
+                background: transparent;
+                width: 8px;
+                margin: 2px 0 2px 0;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background: #888;
+                min-height: 20px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #555;
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+        """
+        return genericScrollAreaStyleSheet
+    
+    def LabelStyleSheet():
+        labelStyleSheet = """
+            QLabel {
+                color: #DDDDDD;
+                font-family: "Segoe UI", Arial, sans-serif;
+                font-size: 13px;
+                padding: 2px 4px;
+                background-color: transparent;
+                border: none;
+            }
+
+            QLabel[class="header"] {
+                font-size: 16px;
+                font-weight: bold;
+                color: #FFFFFF;
+                padding: 6px 4px;
+            }
+
+            QLabel[class="subtitle"] {
+                font-size: 11px;
+                color: #AAAAAA;
+                font-weight: normal;
+                padding: 2px 4px;
+            }
+
+            QLabel[class="warning"] {
+                color: #FFA500;
+                font-weight: bold;
+            }
+
+            QLabel[class="error"] {
+                color: #FF5555;
+                font-weight: bold;
+            }
+        """
+        return labelStyleSheet
