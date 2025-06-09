@@ -163,6 +163,15 @@ class SensorDisplayWidget(QWidget):
         self.pressure_labels = []
         self.temperature_labels = []
 
+        # Feedback labels
+        self.pump_feedback_label = QLabel("Pump Feedback: -- %")
+        self.flow_feedback_label = QLabel("Flow Rate: -- L/min")
+        self.pump_feedback_label.setStyleSheet("font-size: 14px;")
+        self.flow_feedback_label.setStyleSheet("font-size: 14px;")
+
+        layout.addWidget(self.pump_feedback_label)
+        layout.addWidget(self.flow_feedback_label)
+
         # Pressure section title
         pressure_title = QLabel("Pressure Sensors")
         pressure_title.setStyleSheet("font-weight: bold; font-size: 16px;")
@@ -193,6 +202,11 @@ class SensorDisplayWidget(QWidget):
 
         layout.addStretch()
         self.setLayout(layout)
+
+    def update_feedback(self, pump_feedback, flow_rate):
+        self.pump_feedback_label.setText(f"Pump Feedback: {pump_feedback:.1f} %")
+        self.flow_feedback_label.setText(f"Flow Rate: {flow_rate:.1f} L/min")
+
 
     def update_pressures(self, pressures):
         for i, pressure in enumerate(pressures):
@@ -363,7 +377,7 @@ class MainWindow(QWidget):
     def toggle_can_connection(self):
         if not self.can_connected:
             try:
-                self.bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="virtual", bitrate=500000)
+                self.bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="pcan", bitrate=500000)
                 CanOpen.start_listener(self.bus, resolution=16, queue=self.queue)
                 asyncio.create_task(self.pump_sender_task())
                 self.status_bar.setText("Status: CAN Connected")
@@ -442,6 +456,9 @@ class MainWindow(QWidget):
                         deque([values[0]] * history_len, maxlen=history_len),
                         deque([values[1]] * history_len, maxlen=history_len)
                     ]
+            
+            elif data_type == '4-20mA':
+                self.sensor_display.update_feedback(values[0], values[1])
 
 
             self.queue.task_done()

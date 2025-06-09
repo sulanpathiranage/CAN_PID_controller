@@ -139,14 +139,55 @@ class CanOpen:
     @staticmethod    
     def parse_temp_tpdo(msg):
         data = []
-        scale = 10  
-        offset = 0  
+
 
         for i in range(0, 8, 2):
             raw = int.from_bytes(msg.data[i:i+2], byteorder='little', signed=True)
             temperature = (raw * 0.1)  # each count = 0.1 °C
             data.append(temperature)
         return data
+    
+    @staticmethod    
+    def mA_to_percent(current_mA):
+        if current_mA < 4:
+            return 0.0
+        elif current_mA > 20:
+            current_mA = 20
+        return ((current_mA - 4) / 16.0) * 100.0
+    
+    @staticmethod    
+    def mA_to_flow(current_mA, full_scale=32.8):
+        if current_mA < 4:
+            return 0.0
+        elif current_mA > 20:
+            current_mA = 20
+        return ((current_mA - 4) / 16.0) * full_scale
+    
+    @staticmethod    
+    def parse_i_tpdo(msg):
+        data = []
+
+        for i in range(0, 8, 2):
+            raw = int.from_bytes(msg.data[i:i+2], byteorder='little', signed=True)
+            current = raw * 3.1e-4  # current in mA (0–20 mA)
+            data.append(current)
+
+        # Interpret signals:
+        pump_feedback_mA = data[0]
+        flow_meter_mA = data[1]
+
+        pump_percent = CanOpen.mA_to_percent(pump_feedback_mA)
+        flow_kg_per_h = CanOpen.mA_to_flow(flow_meter_mA)
+
+        return {
+            "raw_currents_mA": data,
+            "pump_percent": pump_percent,
+            "flow_kg_per_h": flow_kg_per_h
+        }
+
+
+
+
     
     @staticmethod     
     def generate_uint_16bit_msg(val1, val2, val3, val4):
@@ -184,23 +225,32 @@ class CanOpen:
     def start_listener(bus: can.Bus, resolution, queue: asyncio.Queue = None):
         pt_id = 0x181
         tc_id_map = {0x182: 2, 0x183: 3, 0x184: 4, 0x185: 5}
+        fourtwenty_id = 0x1FE 
 
         class _AsyncListener(can.Listener):
             def on_message_received(self, msg):
-                if msg.arbitration_id == pt_id:
-                    node_id = msg.arbitration_id
+                node_id = msg.arbitration_id
+
+                if node_id == pt_id:
                     voltages = CanOpen.parse_5vadc_tpdo(msg, resolution)
                     print(f"Node {node_id}: {voltages}")
                     if queue:
                         asyncio.create_task(queue.put((node_id, 'voltage', voltages)))
-                elif msg.arbitration_id in tc_id_map:
-                    node_id = msg.arbitration_id
+
+                elif node_id in tc_id_map:
                     temps = CanOpen.parse_temp_tpdo(msg)
                     print(f"Node {node_id}: {temps}")
                     if queue:
                         asyncio.create_task(queue.put((node_id, 'temperature', temps)))
 
+                elif node_id == fourtwenty_id:
+                    signal_data = CanOpen.parse_i_tpdo(msg)
+                    print(f"Node {node_id}: {signal_data}")
+                    if queue:
+                        asyncio.create_task(queue.put((node_id, '4-20mA', signal_data)))
+
         return can.Notifier(bus, [_AsyncListener()], loop=asyncio.get_running_loop())
+
     
     @staticmethod
     async def send_can_message(can_bus: can.Bus, can_id: int, data: List[int]):
@@ -228,6 +278,41 @@ class CanOpen:
 
 
 
+def main():
+
+    # === CONFIGURATION ===
+    channel = "PCAN_USBBUS1"
+    bustype = "pcan"
+    bitrate = 500e3
+    node_ids = [0x23]                # List of CANopen node IDs to configure
+    num_tpdos = 3                    # How many TPDOs to setup per node
+
+    # === SETUP CAN BUS ===
+    try:
+        can_bus = can.interface.Bus(channel=channel, bustype=bustype, bitrate=bitrate)
+    except Exception as e:
+        print(f"[ERROR] Failed to open CAN bus: {e}")
+        return
+
+    print("[INFO] CAN bus initialized")
+
+    # === COMMISSION TPDOs ===
+    try:
+        CanOpen.commission_adc(node_ids, can_bus, num_tpdos)
+        print("[INFO] TPDOs successfully configured")
+    except Exception as e:
+        print(f"[ERROR] TPDO configuration failed: {e}")
+        return
+
+    # === SEND NMT TO ENTER OPERATIONAL STATE ===
+    try:
+        CanOpen.operational(node_ids, can_bus)
+        print("[INFO] Sent NMT operational command")
+    except Exception as e:
+        print(f"[ERROR] Failed to set operational mode: {e}")
+
+if __name__ == "__main__":
+    main()
 
 
 
