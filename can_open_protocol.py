@@ -161,7 +161,9 @@ class CanOpen:
         return msg
 
     @staticmethod     
-    def generate_outmm_msg(pump_on, pump_speed):
+    def generate_outmm_msg(pump_on, pump_speed, 
+                           #esv_n2_on
+                           ):
 
         if pump_speed < 0:
             pump_speed = 0
@@ -203,7 +205,7 @@ class CanOpen:
         return can.Notifier(bus, [_AsyncListener()], loop=asyncio.get_running_loop())
     
     @staticmethod
-    async def send_can_message(can_bus: can.Bus, can_id: int, data: List[int]):
+    async def send_can_message(can_bus: can.Bus, can_id: int, data: List[int], eStopFlag, esv_n2_flag):
         """nonblocking can_sender (hopefully)
 
         Args:
@@ -214,17 +216,25 @@ class CanOpen:
         Raises:
             ValueError: exception error
         """
-        if len(data) > 8:
-            raise ValueError("CAN data cannot exceed 8 bytes")
 
-        msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=False)
+        if (eStopFlag == True) :
+            msg = can.Message(arbitration_id=can_id, data=0x000000000, is_extended_id=False)
+            print("PUMP WAS E-STOPPED")
+        else:
+            if len(data) > 8:
+                raise ValueError("CAN data cannot exceed 8 bytes")
+            if (esv_n2_flag):
+                #send esv on
+                x = 1
+            msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=False)
 
-        try:
-            can_bus.send(msg)
-            print(f"[SEND] Sent CAN message: COB-ID=0x{can_id:X}, Data={data}")
-        except can.CanError as e:
-            print(f"[ERROR] Failed to send CAN message: {e}")
+            try:
+                can_bus.send(msg)
+                print(f"[SEND] Sent CAN message: COB-ID=0x{can_id:X}, Data={data}")
+            except can.CanError as e:
+                print(f"[ERROR] Failed to send CAN message: {e}")
 
+        
 
 
 

@@ -32,6 +32,8 @@ from NH3_vaporizer_control import NH3VaporizerControlScene
 history_len = 100
 ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
 
+eStopValue = False # Default E Stop to off
+
 class PermanentRightHandDisplay(QWidget):
     def __init__(self):
         super().__init__()
@@ -43,6 +45,7 @@ class PermanentRightHandDisplay(QWidget):
         self.eStopButton = QPushButton("E-STOP")
         self.eStopButton.setFixedSize(150, 100)
         self.eStopButton.setStyleSheet(Stylesheets.EStopPushButtonStyleSheet())
+        self.eStopButton.clicked.connect(self.toggleEStop)
 
         self.safetyLabelOne = QLabel("Safety Critical Info Label 1")
         self.safetyLabelTwo = QLabel("Safety Critical Info Label 2")
@@ -66,6 +69,15 @@ class PermanentRightHandDisplay(QWidget):
 
         #Set self "PermanentRightHandDisplay" widget layout
         self.setLayout(rightHandVerticalLayout)
+
+    def toggleEStop(self):
+        global eStopValue
+        if (eStopValue == False):
+            eStopValue = True
+            self.eStopButton.setText("E-STOP\nACTIVE")
+        else :
+            eStopValue = False
+            self.eStopButton.setText("E-STOP")
 
 class PumpControlWidget(QWidget):
     def __init__(self):
@@ -431,7 +443,7 @@ class PumpControlWindow(QWidget):
     def toggle_can_connection(self):
         if not self.can_connected:
             try:
-                self.bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="virtual", bitrate=500000)
+                self.bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="pcan", bitrate=500000)
                 CanOpen.start_listener(self.bus, resolution=16, queue=self.queue)
                 asyncio.create_task(self.pump_sender_task())
                 self.status_bar.setText("Status: CAN Connected")
@@ -550,10 +562,10 @@ class PumpControlWindow(QWidget):
 
             if self.can_connected and self.bus:
                 try:
-                    await CanOpen.send_can_message(self.bus, 0x600, data)
+                    await CanOpen.send_can_message(self.bus, 0x600, data, eStopValue)
                 except Exception as e:
                     self.status_bar.setText(f"CAN Send Error: {str(e)}")
-                await CanOpen.send_can_message(self.bus, 0x600, data)
+                await CanOpen.send_can_message(self.bus, 0x600, data, eStopValue)
 
             if self.logging:
                 timestamp = datetime.now().isoformat()

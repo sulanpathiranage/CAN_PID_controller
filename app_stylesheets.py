@@ -104,6 +104,30 @@ class Stylesheets:
         """
         return plotLabelStyle
     
+    def LabelStyleGreen():
+        plotLabelStyle = """
+        QLabel {
+            background-color: #2E7D32;  /* Green */
+            color: white;               /* White text */
+            font-size: 18px;            /* Large text */
+            border-radius: 10px;        /* Rounded corners */
+            padding: 6px
+        }
+        """
+        return plotLabelStyle
+    
+    def LabelStyleRed():
+        plotLabelStyle = """
+        QLabel {
+            background-color: #C62828;  /* Red */
+            color: white;               /* White text */
+            font-size: 18px;            /* Large text */
+            border-radius: 10px;        /* Rounded corners */
+            padding: 6px
+        }
+        """
+        return plotLabelStyle
+
     def LineEditStyleSheet():
         lineEditStyle = ""
         return lineEditStyle

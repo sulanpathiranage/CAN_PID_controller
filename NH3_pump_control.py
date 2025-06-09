@@ -21,7 +21,12 @@ from SchematicHelper import CreatePlotWindow
 from functools import partial
 from PySide6.QtGui import QPainter
 
+import asyncio
+import random
+
 class NH3PumpControlScene(QWidget):
+
+    valveState = True # for testing valve state initially set to true (open) , typically would be set based on actual message
 
     def __init__(self):
         super().__init__()
@@ -58,27 +63,36 @@ class NH3PumpControlScene(QWidget):
         horizontalButtonLayout.addWidget(self.zoomOutButton)
         horizontalButtonLayout.addWidget(self.gridToggle)
 
-        #Connect buttons
+        # Create plots to start data collection
+        self.ti10401Plot = CreatePlotWindow(self.read_ti10401_data, "TI 10401 Plot", 3.0)
+        self.pt10401Plot = CreatePlotWindow(self.read_pt10401_data, "PT 10401 Plot", 3.0)
+        self.pumpPlot = CreatePlotWindow(self.read_pump_speed, "Pump Speed Plot", 3.0)
+        self.pt10402Plot = CreatePlotWindow(self.read_pt10402_data, "PT 10402 Plot", 3.0)
+        self.ti10402Plot = CreatePlotWindow(self.read_ti10402_data, "TI 10402 Plot", 3.0)
+
+        # Connect buttons
         self.zoomInButton.clicked.connect(partial(SchematicHelperFunctions.Zoom_In, self.systemControlView))
         self.zoomOutButton.clicked.connect(partial(SchematicHelperFunctions.Zoom_Out, self.systemControlView))
         self.gridToggle.stateChanged.connect(self.toggleGrid)
 
         #Create View Data Buttons and Labels
-        self.esv10401Button = CreatePlotButton(self.systemControlScene, lambda:None, "Toggle", -290, -100)
+        self.esv10401Button = CreatePlotButton(self.systemControlScene, self.toggleEsv10401Valve, "Toggle", -290, -100)
         self.esv10401Label = CreatePlotLabel(self.systemControlScene, -290, -140)
         self.esv10401Label.setLabelText("CLOSED")
 
-        self.ti10401Button = CreatePlotButton(self.systemControlScene, self.ti10401ShowPlot, "Plot", -240, 250)
+        self.ti10401Button = CreatePlotButton(self.systemControlScene, self.ti10401Plot.show, "Plot", -240, 250)
         self.ti10401Label = CreatePlotLabel(self.systemControlScene, -240, 210)
 
-        self.pt10401Button = CreatePlotButton(self.systemControlScene, lambda:None, "Plot", 10, 250)
+        self.pt10401Button = CreatePlotButton(self.systemControlScene, self.pt10401Plot.show, "Plot", 10, 250)
         self.ti10401Label = CreatePlotLabel(self.systemControlScene, 10, 210)
 
-        self.pt10402Button = CreatePlotButton(self.systemControlScene, lambda:None, "Plot", 160, -140)
+        self.pt10402Button = CreatePlotButton(self.systemControlScene, self.pt10402Plot.show, "Plot", 160, -140)
         self.pt10402Label = CreatePlotLabel(self.systemControlScene, 160, -190)
 
-        self.ti10402Button = CreatePlotButton(self.systemControlScene, lambda:None, "Plot", 310, -140)
+        self.ti10402Button = CreatePlotButton(self.systemControlScene, self.ti10402Plot.show, "Plot", 310, -140)
         self.ti10402Label = CreatePlotLabel(self.systemControlScene, 310, -190)
+
+        self.pumpLabel = CreatePlotLabel(self.systemControlScene, -40, 60)
 
         #view_size = self.systemControlView.viewport().size()
         #self.systemControlScene.setSceneRect(0, 0, view_size.width(), view_size.height())
@@ -108,7 +122,7 @@ class NH3PumpControlScene(QWidget):
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PT", "10402", 200, -100)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10402", 300, -100)
 
-        SchematicHelperFunctions.CreateLabeledBox(self.systemControlScene, 200, 200, "VENDOR\nPACKAGE", -100, -50)
+        SchematicHelperFunctions.CreateLabeledBox(self.systemControlScene, 200, 200, "PUMP SPEED", -100, -50)
 
         #Adding lines to scene
         #For Labels the X coordinate of line is Xcoord(Label) + width, Y coord is YCoord(Label) - height/2
@@ -148,12 +162,58 @@ class NH3PumpControlScene(QWidget):
         else :
             SchematicHelperFunctions.RemoveCoordinateGrid(self.systemControlScene)
 
-    def ti10401ShowPlot(self):
-        self.ti10401 = CreatePlotWindow()
-        #self.ti10401.setParent(QApplication.activeWindow())
-        #add plot data source here
-        self.ti10401.show()
-        self.ti10401.run_loop()
+    def toggleEsv10401Valve(self):
+
+        # True denotes open valve
+        # False denotes closed valve
+
+        if (self.valveState == True):
+            # Send signal to close valve
+
+            # Update text
+            self.esv10401Label.setLabelText("CLOSED")
+            self.esv10401Label.setLabelColorRed()
+
+            #Update valve state
+            self.valveState = False
+
+        else :
+            # Send signal to open valve
+
+            # Update text
+            self.esv10401Label.setLabelText("OPEN")
+            self.esv10401Label.setLabelColorGreen()
+
+            #Update valve state
+            self.valveState = True
+
+    # Async functions for continuously gathering and plotting sensor data
+    async def read_ti10401_data(self):
+        #await asyncio.sleep(0.0)
+        return random.uniform(5,10) # random values temporarily
+    
+    async def read_pt10401_data(self):
+        #await asyncio.sleep(0.0)
+        return random.uniform(10,15) # random values temporarily
+    
+    async def read_pt10402_data(self):
+        #await asyncio.sleep(0.0)
+        return random.uniform(20,25)
+    
+    async def read_ti10402_data(self):
+        #await asyncio.sleep(0.0)
+        return random.uniform(25,30)
+    
+    async def read_pump_speed(self):
+        #await asyncio.sleep(0.0)
+        return random.uniform(30,35)
+    
+    async def read_fe01_data(self):
+        #await asyncio.sleep(0.0)
+        return random.uniform(35, 40)
+    
+    def showPlot(self, plot):
+        plot.show()
 
 
 

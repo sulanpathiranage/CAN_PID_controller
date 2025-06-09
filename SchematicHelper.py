@@ -20,8 +20,15 @@ from PySide6.QtWidgets import *
 from PySide6.QtGui import *
 from PySide6.QtCore import *
 
+from datetime import datetime
+
 import time
 import random
+import pyqtgraph as pg
+import asyncio
+
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 class SchematicHelperFunctions:
 
@@ -278,29 +285,58 @@ class CreatePlotLabel():
     def setLabelText(self, text="---"):
         self.label.setText(text)
 
+    def setLabelColorGreen(self):
+        self.label.setStyleSheet(Stylesheets.LabelStyleGreen())
+
+    def setLabelColorRed(self):
+        self.label.setStyleSheet(Stylesheets.LabelStyleRed())
+
+
 class CreatePlotWindow(QDialog):
 
-    def __init__(self, title="Sample Plot", parent=None):
+    update_plot_signal = Signal(list)
+
+    def __init__(self, data_func, title="Sample Plot", poll_rate=1.0, parent=None):
         super().__init__(parent)
 
         self.setWindowTitle(title)
         self.resize(200,200)
+        
+        self.poll_rate = poll_rate
+        self.data_func = data_func
+        self.data = [] # Data stored here, as part of the class
+
         self.label = QLabel("Starting...")
+        self.plot_widget = pg.PlotWidget()
         layout = QVBoxLayout()
+
+        self.plot_widget.setLabel('left', 'Value')
+        self.plot_widget.setLabel('bottom', 'Time (Index)')
+        self.plot_widget.showGrid(x=True, y=True)
+        self.curve = self.plot_widget.plot([], [], pen='g', symbol='o')
+
         layout.addWidget(self.label)
+        layout.addWidget(self.plot_widget)
         self.setLayout(layout)
-        self.running = True
 
-    def run_loop(self):
-        count = 0
-        while self.running and count < 500:
-            data = f"Value: {random.randint(1, 100)}"
-            self.label.setText(data)
+        # Connect signal to slot
+        self.update_plot_signal.connect(self.update_plot)
 
-            QApplication.processEvents()  # Process UI events
-            time.sleep(0.1)
-            count += 1
+        # Start collecting data in an async thread
+        self.dataCollectionTask = asyncio.create_task(self.run())
 
-    def closeEvent(self, event):
-        self.running = False
-        super().closeEvent(event)
+    async def run(self):
+        while True:
+            await asyncio.sleep(self.poll_rate)
+            value = await self.data_func()
+            self.data.append(value)
+
+            x = list(range(len(self.data)))
+            self.update_plot_signal.emit(x)
+            
+
+    @Slot(list)
+    def update_plot(self, x):
+        self.curve.setData(x, self.data)
+        print(f"Plotting {len(self.data)} points")
+            
