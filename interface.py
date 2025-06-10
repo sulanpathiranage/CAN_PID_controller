@@ -1,6 +1,7 @@
 import os
 os.environ["PYQTGRAPH_QT_LIB"] = "PyQt6"  # Force pyqtgraph to use PyQt6
 
+import random
 import sys
 import time
 import asyncio
@@ -341,7 +342,7 @@ class PIDControlWidget(QWidget):
 
 class PumpControlWindow(QWidget):
 
-    def __init__(self, bus, queue):
+    def __init__(self, nh3_pump_pAndId, bus, queue):
         super().__init__()
 
         self.setWindowTitle("Instrumentation Dashboard")
@@ -353,6 +354,8 @@ class PumpControlWindow(QWidget):
         self.sensor_display = SensorDisplayWidget()
         self.pid_control = PIDControlWidget()
         self.permanentRightHandControl = PermanentRightHandDisplay()
+
+        self.update_plot_function = nh3_pump_pAndId
 
         # Logging control
         self.bus = bus
@@ -560,29 +563,57 @@ class PumpControlWindow(QWidget):
             self.log_filename_entry.setEnabled(True)
 
     async def consumer_task(self):
+
+        print("Consumer task started")
+
         while True:
             print("Consumer!")
-            node_id, data_type, values = await self.queue.get()
 
-            if data_type == 'voltage':
-                scaled_pressures = [values[0] * 30.0, values[1] * 60.0, values[2] * 60.0]
-                for i in range(3):
-                    ch_data[i].append(scaled_pressures[i])
-                self.last_pressures = scaled_pressures
-                self.sensor_display.update_pressures(scaled_pressures)
+            await asyncio.sleep(1) # poll rate
 
-            elif data_type == 'temperature':
-                if node_id == 0x182:
-                    self.plot_canvas.last_temps = values[:2]
-                    for i in range(2):
-                        temp_data[i] = values[i]
-                    self.sensor_display.update_temperatures(values[:2])
-                    self.last_temps = values[:2]
+            #node_id, data_type, values = await self.queue.get()
+
+            # Testing plots with random data
+            testDataVal = random.uniform(5,10)
+            await self.update_plot_function(testDataVal, "TI10401")
+
+            testDataVal = random.uniform(5,10)
+            await self.update_plot_function(testDataVal, "TI10402")
             
-            elif data_type == '4-20mA':
-                self.sensor_display.update_feedback(values[0], values[1])
+            testDataVal = random.uniform(5,10)
+            await self.update_plot_function(testDataVal, "PT10401")
 
-            self.queue.task_done()
+            testDataVal = random.uniform(5,10)
+            await self.update_plot_function(testDataVal, "PT10402")
+
+            testDataVal = random.uniform(5,10)
+            await self.update_plot_function(testDataVal, "PUMP_SPEED")
+
+            testDataVal = random.uniform(5,10)
+            await self.update_plot_function(testDataVal, "FE01")
+
+
+            # if data_type == 'voltage':
+            #     scaled_pressures = [values[0] * 30.0, values[1] * 60.0, values[2] * 60.0]
+            #     for i in range(3):
+            #         ch_data[i].append(scaled_pressures[i])
+            #     self.last_pressures = scaled_pressures
+            #     self.sensor_display.update_pressures(scaled_pressures)
+
+            # elif data_type == 'temperature':
+            #     if node_id == 0x182:
+            #         self.plot_canvas.last_temps = values[:2]
+            #         for i in range(2):
+            #             temp_data[i] = values[i]
+            #         self.sensor_display.update_temperatures(values[:2])
+            #         self.last_temps = values[:2]
+
+            #         # Update plot with values
+            
+            # elif data_type == '4-20mA':
+            #     self.sensor_display.update_feedback(values[0], values[1])
+
+            # self.queue.task_done()
 
     async def pump_sender_task(self):
         while True:
@@ -665,15 +696,24 @@ async def main_async():
 
     app = QApplication(sys.argv)
 
-    controlWindow = PumpControlWindow(bus=None, queue=queue)  # Don't pass the bus initially
     pAndIdGraphicWindow = PAndIDGraphicWindow(queue=queue)
-    controlWindow.show()
-    pAndIdGraphicWindow.show()
+    controlWindow = PumpControlWindow(pAndIdGraphicWindow.nh3pump.run_plots, bus=None, queue=queue)  # Don't pass the bus initially
+    # Pump Control window needs major refactor so consumer task can live outside of it as it needs to access
+    # items from PAndIdGraphicWindow which contains the NH3 Pump and Vaporizer control scenes which contain the plots
+    # Consumer task needs to be a library like function so it is seperated from the GUI code to follow proper object oriented
+    # encapusulation, passing in the functions consumer task needs to call is a temporary solution
 
-    asyncio.create_task(controlWindow.consumer_task())
+    pAndIdGraphicWindow.show()
+    controlWindow.show()
+
+    #print("Windows created")
+
+
+    #asyncio.create_task(controlWindow.consumer_task())
 
     while True:
         await asyncio.sleep(0.01)
+        #print("Main Loop")
         app.processEvents()
 
 

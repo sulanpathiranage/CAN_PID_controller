@@ -76,13 +76,15 @@ class NH3PumpControlScene(QWidget):
         self.pt10402Label = CreatePlotLabel(self.systemControlScene, 160, -190)
         self.ti10402Label = CreatePlotLabel(self.systemControlScene, 310, -190)
         self.pumpLabel = CreatePlotLabel(self.systemControlScene, -40, 60)
+        self.fe01Label = CreatePlotLabel(self.systemControlScene, 510, -190)
 
         # Create plots to start data collection
-        self.ti10401Plot = CreatePlotWindow(self.ti10401Label.setLabelText, self.read_ti10401_data, "TI 10401 Plot", 1)
-        self.pt10401Plot = CreatePlotWindow(self.pt10401Label.setLabelText, self.read_pt10401_data, "PT 10401 Plot", 1)
-        self.pumpPlot = CreatePlotWindow(self.pumpLabel.setLabelText, self.read_pump_speed, "Pump Speed Plot", 1)
-        self.pt10402Plot = CreatePlotWindow(self.pt10402Label.setLabelText, self.read_pt10402_data, "PT 10402 Plot", 1)
-        self.ti10402Plot = CreatePlotWindow(self.ti10402Label.setLabelText, self.read_ti10402_data, "TI 10402 Plot", 1)
+        self.ti10401Plot = CreatePlotWindow(self.ti10401Label.setLabelText, "TI 10401 Plot", 1)
+        self.pt10401Plot = CreatePlotWindow(self.pt10401Label.setLabelText,"PT 10401 Plot", 1)
+        self.pumpPlot = CreatePlotWindow(self.pumpLabel.setLabelText, "Pump Speed Plot", 1)
+        self.pt10402Plot = CreatePlotWindow(self.pt10402Label.setLabelText, "PT 10402 Plot", 1)
+        self.ti10402Plot = CreatePlotWindow(self.ti10402Label.setLabelText, "TI 10402 Plot", 1)
+        self.fe01Plot = CreatePlotWindow(self.fe01Label.setLabelText, "FE 01 Plot", 1)
 
         # Create Plot buttons
         self.esv10401Button = CreatePlotButton(self.systemControlScene, self.toggleEsv10401Valve, "Toggle", -290, -100)
@@ -184,40 +186,20 @@ class NH3PumpControlScene(QWidget):
             #Update valve state
             self.valveState = True
 
-    # Async functions for continuously gathering and plotting sensor data
-    async def read_ti10401_data(self):
-        # node_id, data_type, values = await self.queue.get()
-
-        # if (data_type == 'temperature'):
-        #     # Process data to display if node id is correct
-        #     x=1
-
-        return random.uniform(5,10) # random values temporarily
-    
-    async def read_pt10401_data(self):
-        #await asyncio.sleep(0.0)
-        return random.uniform(10,15) # random values temporarily
-    
-    async def read_pt10402_data(self):
-        #await asyncio.sleep(0.0)
-        return random.uniform(20,25)
-    
-    async def read_ti10402_data(self):
-        #await asyncio.sleep(0.0)
-        return random.uniform(25,30)
-    
-    async def read_pump_speed(self):
-        #await asyncio.sleep(0.0)
-        return random.uniform(30,35)
-    
-    async def read_fe01_data(self):
-        #await asyncio.sleep(0.0)
-        return random.uniform(35, 40)
+    # Async function for updating a plot depending on the data type
+    async def run_plots(self, data, sensorName):
+        if sensorName == "TI10401" :
+            await self.ti10401Plot.run(data)
+        elif sensorName == "TI10402" :
+            await self.ti10402Plot.run(data)
+        elif sensorName == "PT10401" :
+            await self.pt10401Plot.run(data)
+        elif sensorName == "PT10402" :
+            await self.pt10402Plot.run(data)
+        elif sensorName == "PUMP_SPEED" :
+            await self.pumpPlot.run(data)
+        elif sensorName == "FE01" :
+            await self.fe01Plot.run(data)
     
     def showPlot(self, plot):
         plot.show()
-
-
-
-    
-

@@ -309,14 +309,14 @@ class CreatePlotWindow(QDialog):
     update_plot_signal = pyqtSignal(list)
     update_label_signal = pyqtSignal(float)
 
-    def __init__(self, label_func, data_func, title="Sample Plot", poll_rate=1, parent=None):
+    def __init__(self, label_func, title="Sample Plot", poll_rate=1, parent=None):
         super().__init__(parent)
 
         self.setWindowTitle(title)
         self.resize(200,200)
         
         self.poll_rate = poll_rate
-        self.data_func = data_func
+        #self.data_func = data_func
         self.labelUpdateFunc = label_func
         self.data = [] # Data stored here, as part of the class
 
@@ -341,15 +341,16 @@ class CreatePlotWindow(QDialog):
         self.update_label_signal.connect(self.update_label)
 
         # Start collecting data in an async thread
-        self.dataCollectionTask = asyncio.create_task(self.run())
+        #self.dataCollectionTask = asyncio.create_task(self.run()) # Have the same thread call the polling function
 
-    async def run(self):
-        while True:
-            await asyncio.sleep(self.poll_rate)
-            value = await self.data_func()
-            self.data.append(value)
-            self.update_plot_signal.emit(list(self.data))
-            self.update_label_signal.emit(value)
+    async def run(self, value):
+        #while True:
+        # await asyncio.sleep(self.poll_rate)
+        # value = await self.data_func()
+        self.data.append(value)
+        print("Updating plots")
+        self.update_plot_signal.emit(list(self.data))
+        self.update_label_signal.emit(value)
             
     def update_plot(self, data):
 
