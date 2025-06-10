@@ -39,6 +39,7 @@ import pyqtgraph as pg
 
 history_len = 100
 ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
+temp_data  =  [deque([0.0] * history_len, maxlen=history_len) for _ in range(2)]
 
 eStopValue = False # Default E Stop to off
 
@@ -209,7 +210,7 @@ class PyqtgraphPlotWidget(QWidget):
             self.pressure_curves[i].setData(time_axis, list(ch_data[i]))
         if hasattr(self, 'temperature_data'):
             for i in range(2):
-                self.temperature_curves[i].setData(time_axis, list(self.temperature_data[i]))
+                self.temperature_curves[i].setData(time_axis, list(temp_data[i]))
 
         if self.last_temps and None not in self.last_temps:
             self.temp_readout.setText(
@@ -569,7 +570,6 @@ class PumpControlWindow(QWidget):
 
             if data_type == 'voltage':
                 scaled_pressures = [values[0] * 30.0, values[1] * 60.0, values[2] * 60.0]
-                print(scaled_pressures)
                 for i in range(3):
                     ch_data[i].append(scaled_pressures[i])
                 self.last_pressures = scaled_pressures
@@ -577,12 +577,9 @@ class PumpControlWindow(QWidget):
 
             elif data_type == 'temperature':
                 if node_id == 0x182:
-                    print(values)
                     self.plot_canvas.last_temps = values[:2]
-                    self.plot_canvas.temperature_data = [
-                        deque([values[0]] * history_len, maxlen=history_len),
-                        deque([values[1]] * history_len, maxlen=history_len)
-                    ]
+                    for i in range(2):
+                        temp_data[i] = values[i]
                     self.sensor_display.update_temperatures(values[:2])
                     self.last_temps = values[:2]
             
