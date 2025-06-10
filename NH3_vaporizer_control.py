@@ -1,30 +1,32 @@
 
-from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-    QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
-    QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
-    QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget,
-    QGraphicsView, QGraphicsScene, QGraphicsPolygonItem, QGraphicsTextItem,
-    QGraphicsRectItem, QGraphicsLineItem, QGraphicsProxyWidget, QSpacerItem)
+import random
+import asyncio
 
-from PySide6.QtCore import QPointF
-from PySide6.QtGui import QPolygonF, QFont, QColor, QPen
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsTextItem
-from PySide6.QtCore import QPointF, QRectF
-from PySide6.QtGui import QFont
-from PySide6.QtCore import QLineF
+from PyQt6.QtWidgets import (
+    QWidget, QPushButton, QGraphicsScene, QGraphicsView,
+    QGraphicsProxyWidget, QGraphicsTextItem, QVBoxLayout,
+    QLabel, QDoubleSpinBox, QCheckBox, QSpacerItem, QSizePolicy,
+    QHBoxLayout
+)
+from PyQt6.QtCore import (
+    Qt, QLineF, QPointF, QRectF
+)
+from PyQt6.QtGui import (
+    QFont, QColor, QPen, QPainter, QPolygonF
+)
 
 from app_stylesheets import Stylesheets
-from SchematicHelper import CreatePlotButton, SchematicHelperFunctions
-from SchematicHelper import CreatePlotWindow, CreatePlotLabel
+from SchematicHelper import (
+    CreatePlotButton, SchematicHelperFunctions, CreatePlotLabel,
+    CreatePlotWindow
+)
 from functools import partial
 
-from PySide6.QtGui import QPainter
-
 class NH3VaporizerControlScene(QWidget):
-    def __init__(self):
+    def __init__(self, queue):
         super().__init__()
+
+        self.queue = queue
 
         #Create Layout
         verticalLayout = QVBoxLayout()
@@ -35,7 +37,7 @@ class NH3VaporizerControlScene(QWidget):
         self.systemControlScene = QGraphicsScene()
         self.systemControlView = QGraphicsView(self.systemControlScene)
         self.systemControlView.setStyleSheet(Stylesheets.GraphicsViewStyleSheet())
-        self.systemControlView.setRenderHints(self.systemControlView.renderHints() | QPainter.Antialiasing)
+        self.systemControlView.setRenderHints(self.systemControlView.renderHints() | QPainter.RenderHint.Antialiasing)
 
         #Create Zoom Buttons
         self.zoomInButton = QPushButton("Zoom In")
@@ -49,7 +51,7 @@ class NH3VaporizerControlScene(QWidget):
         self.gridToggle.setChecked(True)
 
         #Create Spacer Item
-        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         horizontalButtonLayout.addWidget(self.nh3_pump_label)
         horizontalButtonLayout.addItem(self.horizontalSpacer)
         horizontalButtonLayout.addWidget(self.zoomInButton)
