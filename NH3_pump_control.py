@@ -1,35 +1,35 @@
 
-from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-    QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
-    QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
-    QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget,
-    QGraphicsView, QGraphicsScene, QGraphicsPolygonItem, QGraphicsTextItem,
-    QGraphicsRectItem, QGraphicsLineItem, QGraphicsProxyWidget, QSpacerItem)
+import random
+import asyncio
 
-from PySide6.QtCore import QPointF
-from PySide6.QtGui import QPolygonF, QFont, QColor, QPen
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsTextItem
-from PySide6.QtCore import QPointF, QRectF
-from PySide6.QtGui import QFont
-from PySide6.QtCore import QLineF
+from PyQt6.QtWidgets import (
+    QWidget, QPushButton, QGraphicsScene, QGraphicsView,
+    QGraphicsProxyWidget, QGraphicsTextItem, QVBoxLayout,
+    QLabel, QDoubleSpinBox, QCheckBox, QSpacerItem, QSizePolicy,
+    QHBoxLayout
+)
+from PyQt6.QtCore import (
+    Qt, QLineF, QPointF, QRectF
+)
+from PyQt6.QtGui import (
+    QFont, QColor, QPen, QPainter, QPolygonF
+)
 
 from app_stylesheets import Stylesheets
-from SchematicHelper import CreatePlotButton, SchematicHelperFunctions, CreatePlotLabel 
-from SchematicHelper import CreatePlotWindow
+from SchematicHelper import (
+    CreatePlotButton, SchematicHelperFunctions, CreatePlotLabel,
+    CreatePlotWindow
+)
 from functools import partial
-from PySide6.QtGui import QPainter
-
-import asyncio
-import random
 
 class NH3PumpControlScene(QWidget):
 
     valveState = True # for testing valve state initially set to true (open) , typically would be set based on actual message
 
-    def __init__(self):
+    def __init__(self, queue):
         super().__init__()
+
+        self.queue = queue
 
         #Create Layout
         verticalLayout = QVBoxLayout()
@@ -40,7 +40,7 @@ class NH3PumpControlScene(QWidget):
         self.systemControlScene = QGraphicsScene()
         self.systemControlView = QGraphicsView(self.systemControlScene)
         self.systemControlView.setStyleSheet(Stylesheets.GraphicsViewStyleSheet())
-        self.systemControlView.setRenderHints(self.systemControlView.renderHints() | QPainter.Antialiasing)
+        self.systemControlView.setRenderHints(self.systemControlView.renderHints() | QPainter.RenderHint.Antialiasing)
 
         #Create Zoom Buttons
         self.zoomInButton = QPushButton("Zoom In")
@@ -54,7 +54,7 @@ class NH3PumpControlScene(QWidget):
         self.gridToggle.setChecked(True)
 
         #Create Spacer
-        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         #Add Zoom buttons and spacer to horizontal layout
         horizontalButtonLayout.addWidget(self.nh3_pump_label)
@@ -63,36 +63,33 @@ class NH3PumpControlScene(QWidget):
         horizontalButtonLayout.addWidget(self.zoomOutButton)
         horizontalButtonLayout.addWidget(self.gridToggle)
 
-        # Create plots to start data collection
-        self.ti10401Plot = CreatePlotWindow(self.read_ti10401_data, "TI 10401 Plot", 3.0)
-        self.pt10401Plot = CreatePlotWindow(self.read_pt10401_data, "PT 10401 Plot", 3.0)
-        self.pumpPlot = CreatePlotWindow(self.read_pump_speed, "Pump Speed Plot", 3.0)
-        self.pt10402Plot = CreatePlotWindow(self.read_pt10402_data, "PT 10402 Plot", 3.0)
-        self.ti10402Plot = CreatePlotWindow(self.read_ti10402_data, "TI 10402 Plot", 3.0)
-
         # Connect buttons
         self.zoomInButton.clicked.connect(partial(SchematicHelperFunctions.Zoom_In, self.systemControlView))
         self.zoomOutButton.clicked.connect(partial(SchematicHelperFunctions.Zoom_Out, self.systemControlView))
         self.gridToggle.stateChanged.connect(self.toggleGrid)
 
-        #Create View Data Buttons and Labels
-        self.esv10401Button = CreatePlotButton(self.systemControlScene, self.toggleEsv10401Valve, "Toggle", -290, -100)
+        #Create Labels
         self.esv10401Label = CreatePlotLabel(self.systemControlScene, -290, -140)
         self.esv10401Label.setLabelText("CLOSED")
-
-        self.ti10401Button = CreatePlotButton(self.systemControlScene, self.ti10401Plot.show, "Plot", -240, 250)
         self.ti10401Label = CreatePlotLabel(self.systemControlScene, -240, 210)
-
-        self.pt10401Button = CreatePlotButton(self.systemControlScene, self.pt10401Plot.show, "Plot", 10, 250)
-        self.ti10401Label = CreatePlotLabel(self.systemControlScene, 10, 210)
-
-        self.pt10402Button = CreatePlotButton(self.systemControlScene, self.pt10402Plot.show, "Plot", 160, -140)
+        self.pt10401Label = CreatePlotLabel(self.systemControlScene, 10, 210)
         self.pt10402Label = CreatePlotLabel(self.systemControlScene, 160, -190)
-
-        self.ti10402Button = CreatePlotButton(self.systemControlScene, self.ti10402Plot.show, "Plot", 310, -140)
         self.ti10402Label = CreatePlotLabel(self.systemControlScene, 310, -190)
-
         self.pumpLabel = CreatePlotLabel(self.systemControlScene, -40, 60)
+
+        # Create plots to start data collection
+        self.ti10401Plot = CreatePlotWindow(self.ti10401Label.setLabelText, self.read_ti10401_data, "TI 10401 Plot", 1)
+        self.pt10401Plot = CreatePlotWindow(self.pt10401Label.setLabelText, self.read_pt10401_data, "PT 10401 Plot", 1)
+        self.pumpPlot = CreatePlotWindow(self.pumpLabel.setLabelText, self.read_pump_speed, "Pump Speed Plot", 1)
+        self.pt10402Plot = CreatePlotWindow(self.pt10402Label.setLabelText, self.read_pt10402_data, "PT 10402 Plot", 1)
+        self.ti10402Plot = CreatePlotWindow(self.ti10402Label.setLabelText, self.read_ti10402_data, "TI 10402 Plot", 1)
+
+        # Create Plot buttons
+        self.esv10401Button = CreatePlotButton(self.systemControlScene, self.toggleEsv10401Valve, "Toggle", -290, -100)
+        self.ti10401Button = CreatePlotButton(self.systemControlScene, self.ti10401Plot.show, "Plot", -240, 250)
+        self.pt10401Button = CreatePlotButton(self.systemControlScene, self.pt10401Plot.show, "Plot", 10, 250)
+        self.pt10402Button = CreatePlotButton(self.systemControlScene, self.pt10402Plot.show, "Plot", 160, -140)
+        self.ti10402Button = CreatePlotButton(self.systemControlScene, self.ti10402Plot.show, "Plot", 310, -140)
 
         #view_size = self.systemControlView.viewport().size()
         #self.systemControlScene.setSceneRect(0, 0, view_size.width(), view_size.height())
@@ -189,7 +186,12 @@ class NH3PumpControlScene(QWidget):
 
     # Async functions for continuously gathering and plotting sensor data
     async def read_ti10401_data(self):
-        #await asyncio.sleep(0.0)
+        # node_id, data_type, values = await self.queue.get()
+
+        # if (data_type == 'temperature'):
+        #     # Process data to display if node id is correct
+        #     x=1
+
         return random.uniform(5,10) # random values temporarily
     
     async def read_pt10401_data(self):

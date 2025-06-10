@@ -1,41 +1,40 @@
-import sys
-import can
-import time 
-import asyncio
-import pyqtgraph as pg
-from typing import List
-from can_open_protocol import CanOpen
+import os
+os.environ["PYQTGRAPH_QT_LIB"] = "PyQt6"  # Force pyqtgraph to use PyQt6
 
-from PySide6.QtWidgets import (
+import sys
+import time
+import asyncio
+import csv
+from datetime import datetime
+from collections import deque
+from typing import List
+
+import can
+import pyqtgraph as pg
+
+import matplotlib
+matplotlib.use('QtAgg')
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+
+# PyQt6 Imports
+from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
     QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
-    QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget
+    QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget,
+    QGraphicsView, QGraphicsScene, QGraphicsPolygonItem, QGraphicsTextItem,
+    QGraphicsRectItem, QGraphicsLineItem, QGraphicsProxyWidget, QSpacerItem
 )
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QFont
 
-from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-    QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox, 
-    QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
-    QPushButton, QDoubleSpinBox
-)
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFont
-import matplotlib
-matplotlib.use('QtAgg')
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-import matplotlib.pyplot as plt
-from collections import deque
-import csv
-from datetime import datetime
-
-#Local Imports
+# Local imports
 from pid_controller import PIDController
 from app_stylesheets import Stylesheets
 from NH3_pump_control import NH3PumpControlScene
 from NH3_vaporizer_control import NH3VaporizerControlScene
-from pid_controller import PIDController
-import pyqtgraph as pg
+from can_open_protocol import CanOpen
 
 history_len = 100
 ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
@@ -199,9 +198,6 @@ class PyqtgraphPlotWidget(QWidget):
 
         # Add single widget to layout
         self.plot_area.addWidget(temp_widget)
-
-
-
         self.layout.addLayout(self.plot_area, 5)
 
     def update_plot(self):
@@ -630,7 +626,7 @@ class PumpControlWindow(QWidget):
         event.accept()
 
 class PAndIDGraphicWindow(QWidget):
-    def __init__(self):
+    def __init__(self, queue):
         super().__init__()
 
         self.setWindowTitle("P&ID Schematics")
@@ -638,8 +634,8 @@ class PAndIDGraphicWindow(QWidget):
         self.setStyleSheet("color: white; background-color: #212121;")
 
         tabWindowLayout = QVBoxLayout()
-        self.nh3pump = NH3PumpControlScene()
-        self.nh3vaporizer = NH3VaporizerControlScene()
+        self.nh3pump = NH3PumpControlScene(queue)
+        self.nh3vaporizer = NH3VaporizerControlScene(queue)
 
         #Create tab widget
         self.tab_widget = QTabWidget()
@@ -670,7 +666,7 @@ async def main_async():
     app = QApplication(sys.argv)
 
     controlWindow = PumpControlWindow(bus=None, queue=queue)  # Don't pass the bus initially
-    pAndIdGraphicWindow = PAndIDGraphicWindow()
+    pAndIdGraphicWindow = PAndIDGraphicWindow(queue=queue)
     controlWindow.show()
     pAndIdGraphicWindow.show()
 
