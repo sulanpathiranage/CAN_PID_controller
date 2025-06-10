@@ -13,6 +13,12 @@ from PySide6.QtWidgets import (
     QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget
 )
 
+from PySide6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+    QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox, 
+    QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
+    QPushButton, QDoubleSpinBox
+)
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
 import matplotlib
@@ -28,6 +34,8 @@ from pid_controller import PIDController
 from app_stylesheets import Stylesheets
 from NH3_pump_control import NH3PumpControlScene
 from NH3_vaporizer_control import NH3VaporizerControlScene
+from pid_controller import PIDController
+import pyqtgraph as pg
 
 history_len = 100
 ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
@@ -139,6 +147,7 @@ class PumpControlWidget(QWidget):
         return int(self.pump_on_checkbox.isChecked()), self.speed_slider.value()
     
 
+
 class PyqtgraphPlotWidget(QWidget):
     def __init__(self):
         super().__init__()
@@ -168,18 +177,28 @@ class PyqtgraphPlotWidget(QWidget):
             self.pressure_curves.append(curve)
             self.plot_area.addWidget(pw)
 
-        # Plot temperature graphs
-        for name in self.temperature_names:
-            pw = pg.PlotWidget(title=name)
-            pw.setLabel('left', "Temperature", units='°C')
-            pw.setLabel('bottom', "Time", units='s')
-            pw.setYRange(0, 150)
-            pw.setXRange(0, 10)
-            pw.showGrid(x=True, y=True)
-            pw.getAxis("left").setStyle(tickFont=pg.Qt.QtGui.QFont("Arial", 10))
-            curve = pw.plot(pen=pg.mkPen('r', width=2))
-            self.temperature_curves.append(curve)
-            self.plot_area.addWidget(pw)
+        # Plot temperature graph
+        temp_widget = pg.PlotWidget(title="Temperatures")
+        temp_widget.setLabel('left', "Temperature", units='°C')
+        temp_widget.setLabel('bottom', "Time", units='s')
+        temp_widget.setYRange(0, 150)
+        temp_widget.setXRange(0, 10)
+        temp_widget.showGrid(x=True, y=True)
+        temp_widget.getAxis("left").setStyle(tickFont=pg.Qt.QtGui.QFont("Arial", 10))
+
+        # Add legend to differentiate curves
+        legend = temp_widget.addLegend()
+
+        # Create curves for T01 and T02 with different colors
+        curve1 = temp_widget.plot(pen=pg.mkPen('r', width=2), name="T01")
+        curve2 = temp_widget.plot(pen=pg.mkPen('g', width=2), name="T02")
+
+        # Store curves for later updates
+        self.temperature_curves = [curve1, curve2]
+
+        # Add single widget to layout
+        self.plot_area.addWidget(temp_widget)
+
 
 
         self.layout.addLayout(self.plot_area, 5)
@@ -205,6 +224,15 @@ class SensorDisplayWidget(QWidget):
         layout = QVBoxLayout()
         self.pressure_labels = []
         self.temperature_labels = []
+
+        # Feedback labels
+        self.pump_feedback_label = QLabel("Pump Feedback: -- %")
+        self.flow_feedback_label = QLabel("Flow Rate: -- L/min")
+        self.pump_feedback_label.setStyleSheet("font-size: 14px;")
+        self.flow_feedback_label.setStyleSheet("font-size: 14px;")
+
+        layout.addWidget(self.pump_feedback_label)
+        layout.addWidget(self.flow_feedback_label)
 
         # Pressure section title
         pressure_title = QLabel("Pressure Sensors")
@@ -236,6 +264,11 @@ class SensorDisplayWidget(QWidget):
 
         layout.addStretch()
         self.setLayout(layout)
+
+    def update_feedback(self, pump_feedback, flow_rate):
+        self.pump_feedback_label.setText(f"Pump Feedback: {pump_feedback:.1f} %")
+        self.flow_feedback_label.setText(f"Flow Rate: {flow_rate:.1f} L/min")
+
 
     def update_pressures(self, pressures):
         for i, pressure in enumerate(pressures):
@@ -547,6 +580,9 @@ class PumpControlWindow(QWidget):
                         deque([values[0]] * history_len, maxlen=history_len),
                         deque([values[1]] * history_len, maxlen=history_len)
                     ]
+            
+            elif data_type == '4-20mA':
+                self.sensor_display.update_feedback(values[0], values[1])
 
             self.queue.task_done()
 

@@ -15,10 +15,5 @@ def io_fn():
 
 
 
-def gui_fn():
-    while True:
-        print("gui here")
-        time.sleep(1)
-
     
 
