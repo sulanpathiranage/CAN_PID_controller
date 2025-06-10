@@ -269,7 +269,7 @@ class CanOpen:
 
         if (eStopFlag == True) :
             msg = can.Message(arbitration_id=can_id, data=0x000000000, is_extended_id=False)
-            print("PUMP WAS E-STOPPED")
+            #print("PUMP WAS E-STOPPED")
         else:
             if len(data) > 8:
                 raise ValueError("CAN data cannot exceed 8 bytes")
@@ -280,7 +280,7 @@ class CanOpen:
 
             try:
                 can_bus.send(msg)
-                print(f"[SEND] Sent CAN message: COB-ID=0x{can_id:X}, Data={data}")
+                #print(f"[SEND] Sent CAN message: COB-ID=0x{can_id:X}, Data={data}")
             except can.CanError as e:
                 print(f"[ERROR] Failed to send CAN message: {e}")
 

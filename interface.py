@@ -500,7 +500,7 @@ class PumpControlWindow(QWidget):
     def toggle_can_connection(self):
         if not self.can_connected:
             try:
-                self.bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="virtual", bitrate=500000)
+                self.bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="pcan", bitrate=500000)
                 CanOpen.start_listener(self.bus, resolution=16, queue=self.queue)
                 asyncio.create_task(self.pump_sender_task())
 
@@ -564,10 +564,12 @@ class PumpControlWindow(QWidget):
 
     async def consumer_task(self):
         while True:
+            print("Consumer!")
             node_id, data_type, values = await self.queue.get()
 
             if data_type == 'voltage':
                 scaled_pressures = [values[0] * 30.0, values[1] * 60.0, values[2] * 60.0]
+                print(scaled_pressures)
                 for i in range(3):
                     ch_data[i].append(scaled_pressures[i])
                 self.last_pressures = scaled_pressures
@@ -575,11 +577,14 @@ class PumpControlWindow(QWidget):
 
             elif data_type == 'temperature':
                 if node_id == 0x182:
+                    print(values)
                     self.plot_canvas.last_temps = values[:2]
                     self.plot_canvas.temperature_data = [
                         deque([values[0]] * history_len, maxlen=history_len),
                         deque([values[1]] * history_len, maxlen=history_len)
                     ]
+                    self.sensor_display.update_temperatures(values[:2])
+                    self.last_temps = values[:2]
             
             elif data_type == '4-20mA':
                 self.sensor_display.update_feedback(values[0], values[1])
@@ -598,10 +603,10 @@ class PumpControlWindow(QWidget):
 
             if self.can_connected and self.bus:
                 try:
-                    await CanOpen.send_can_message(self.bus, 0x600, data, eStopValue)
+                    await CanOpen.send_can_message(self.bus, 0x600, data, eStopValue, False)
                 except Exception as e:
                     self.status_bar.setText(f"CAN Send Error: {str(e)}")
-                await CanOpen.send_can_message(self.bus, 0x600, data, eStopValue)
+                await CanOpen.send_can_message(self.bus, 0x600, data, eStopValue, False)
 
             if self.logging:
                 timestamp = datetime.now().isoformat()
