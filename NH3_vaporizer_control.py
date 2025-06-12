@@ -23,10 +23,8 @@ from SchematicHelper import (
 from functools import partial
 
 class NH3VaporizerControlScene(QWidget):
-    def __init__(self, queue):
+    def __init__(self):
         super().__init__()
-
-        self.queue = queue
 
         #Create Layout
         verticalLayout = QVBoxLayout()

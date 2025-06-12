@@ -20,16 +20,16 @@ from SchematicHelper import (
     CreatePlotButton, SchematicHelperFunctions, CreatePlotLabel,
     CreatePlotWindow
 )
+
 from functools import partial
+from can_open_protocol import CanOpen
 
 class NH3PumpControlScene(QWidget):
 
     valveState = True # for testing valve state initially set to true (open) , typically would be set based on actual message
 
-    def __init__(self, queue):
+    def __init__(self):
         super().__init__()
-
-        self.queue = queue
 
         #Create Layout
         verticalLayout = QVBoxLayout()
@@ -75,16 +75,16 @@ class NH3PumpControlScene(QWidget):
         self.pt10401Label = CreatePlotLabel(self.systemControlScene, 10, 210)
         self.pt10402Label = CreatePlotLabel(self.systemControlScene, 160, -190)
         self.ti10402Label = CreatePlotLabel(self.systemControlScene, 310, -190)
-        self.pumpLabel = CreatePlotLabel(self.systemControlScene, -40, 60)
         self.fe01Label = CreatePlotLabel(self.systemControlScene, 510, -190)
+        self.pumpLabel = CreatePlotLabel(self.systemControlScene, -40, 60)
 
         # Create plots to start data collection
         self.ti10401Plot = CreatePlotWindow(self.ti10401Label.setLabelText, "TI 10401 Plot", 1)
         self.pt10401Plot = CreatePlotWindow(self.pt10401Label.setLabelText,"PT 10401 Plot", 1)
-        self.pumpPlot = CreatePlotWindow(self.pumpLabel.setLabelText, "Pump Speed Plot", 1)
         self.pt10402Plot = CreatePlotWindow(self.pt10402Label.setLabelText, "PT 10402 Plot", 1)
         self.ti10402Plot = CreatePlotWindow(self.ti10402Label.setLabelText, "TI 10402 Plot", 1)
         self.fe01Plot = CreatePlotWindow(self.fe01Label.setLabelText, "FE 01 Plot", 1)
+        self.pumpPlot = CreatePlotWindow(self.pumpLabel.setLabelText, "Pump Speed Plot", 1)
 
         # Create Plot buttons
         self.esv10401Button = CreatePlotButton(self.systemControlScene, self.toggleEsv10401Valve, "Toggle", -290, -100)
@@ -92,6 +92,9 @@ class NH3PumpControlScene(QWidget):
         self.pt10401Button = CreatePlotButton(self.systemControlScene, self.pt10401Plot.show, "Plot", 10, 250)
         self.pt10402Button = CreatePlotButton(self.systemControlScene, self.pt10402Plot.show, "Plot", 160, -140)
         self.ti10402Button = CreatePlotButton(self.systemControlScene, self.ti10402Plot.show, "Plot", 310, -140)
+        self.fe01Button = CreatePlotButton(self.systemControlScene, self.fe01Plot.show, "Plot", 510, -140)
+        self.pumpButton = CreatePlotButton(self.systemControlScene, self.pumpPlot.show, "Plot", -40, 100)
+
 
         #view_size = self.systemControlView.viewport().size()
         #self.systemControlScene.setSceneRect(0, 0, view_size.width(), view_size.height())
@@ -167,7 +170,11 @@ class NH3PumpControlScene(QWidget):
         # False denotes closed valve
 
         if (self.valveState == True):
-            # Send signal to close valve
+            # # Send signal to close valve
+            # try:
+            #     await CanOpen.send_can_message(self.bus, 0x600, data, eStopValue, False, testingFlag)
+            # except Exception as e:
+            #         self.status_bar.setText(f"CAN Send Error: {str(e)}")
 
             # Update text
             self.esv10401Label.setLabelText("CLOSED")
@@ -186,7 +193,7 @@ class NH3PumpControlScene(QWidget):
             #Update valve state
             self.valveState = True
 
-    # Async function for updating a plot depending on the data type
+    # Async function for updating a plot depending on the data type, enumerate sensor names at some point
     async def run_plots(self, data, sensorName):
         if sensorName == "TI10401" :
             await self.ti10401Plot.run(data)
@@ -196,10 +203,7 @@ class NH3PumpControlScene(QWidget):
             await self.pt10401Plot.run(data)
         elif sensorName == "PT10402" :
             await self.pt10402Plot.run(data)
-        elif sensorName == "PUMP_SPEED" :
+        elif sensorName == "PUMP" :
             await self.pumpPlot.run(data)
         elif sensorName == "FE01" :
             await self.fe01Plot.run(data)
-    
-    def showPlot(self, plot):
-        plot.show()

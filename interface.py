@@ -43,6 +43,8 @@ temp_data  =  [deque([0.0] * history_len, maxlen=history_len) for _ in range(2)]
 
 eStopValue = False # Default E Stop to off
 
+testingFlag = False # Global testing flag for running with virtual bus
+
 class PermanentRightHandDisplay(QWidget):
     def __init__(self):
         super().__init__()
@@ -205,14 +207,15 @@ class PyqtgraphPlotWidget(QWidget):
         time_axis = [i * 0.1 for i in range(history_len)]  # Last 10 seconds
         for i in range(3):
             self.pressure_curves[i].setData(time_axis, list(ch_data[i]))
-        if hasattr(self, 'temperature_data'):
-            for i in range(2):
-                self.temperature_curves[i].setData(time_axis, list(temp_data[i]))
+        #if hasattr(self, 'temp_data'):
+        for i in range(2):
+            self.temperature_curves[i].setData(time_axis, list(temp_data[i]))
 
         if self.last_temps and None not in self.last_temps:
-            self.temp_readout.setText(
-                f"<b>T01:</b> {self.last_temps[0]:.1f} °C<br><b>T02:</b> {self.last_temps[1]:.1f} °C"
-            )
+            # self.temp_readout.setText(
+            #     f"<b>T01:</b> {self.last_temps[0]:.1f} °C<br><b>T02:</b> {self.last_temps[1]:.1f} °C"
+            # )
+            x=1 # temporary to get python to shut up
 
 
 
@@ -342,7 +345,7 @@ class PIDControlWidget(QWidget):
 
 class PumpControlWindow(QWidget):
 
-    def __init__(self, nh3_pump_pAndId, bus, queue):
+    def __init__(self, nh3_pump_pAndId, bus, queue_List):
         super().__init__()
 
         self.setWindowTitle("Instrumentation Dashboard")
@@ -359,13 +362,15 @@ class PumpControlWindow(QWidget):
 
         # Logging control
         self.bus = bus
-        self.queue = queue
+        self.queue_List = queue_List
         self.can_connected = False
         self.logging = False
         self.log_file = None
         self.csv_writer = None
         self.last_pressures = [0.0, 0.0, 0.0]
         self.last_temps = [0.0, 0.0]
+        self.last_pump_feedback = 0.0
+        self.last_flow_rate = 0.0
 
         self.log_filename_entry = QLineEdit()
         self.log_filename_entry.setPlaceholderText("Enter log filename...")
@@ -473,35 +478,12 @@ class PumpControlWindow(QWidget):
         asyncio.create_task(self.consumer_task())
         asyncio.create_task(self.pump_sender_task())
 
-    def toggle_can_connection(self):
-        if not self.can_connected:
-            try:
-                self.bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="pcan", bitrate=500000)
-                CanOpen.start_listener(self.bus, resolution=16, queue=self.queue)
-                asyncio.create_task(self.pump_sender_task())
-                self.status_bar.setText("Status: CAN Connected")
-                self.connect_button.setText("Disconnect CAN")
-                self.can_connected = True
-            except Exception as e:
-                QMessageBox.critical(self, "CAN Error", f"Failed to connect to CAN: {e}")
-                self.status_bar.setText("Status: CAN Connection Failed")
-        else:
-            try:
-                if self.bus:
-                    self.bus.shutdown()
-                self.bus = None
-                self.can_connected = False
-                self.connect_button.setText("Connect CAN")
-                self.status_bar.setText("Status: CAN Disconnected")
-            except Exception as e:
-                QMessageBox.warning(self, "Disconnect Error", f"Error during CAN disconnection: {e}")
-
 
     def toggle_can_connection(self):
         if not self.can_connected:
             try:
                 self.bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="pcan", bitrate=500000)
-                CanOpen.start_listener(self.bus, resolution=16, queue=self.queue)
+                CanOpen.start_listener(self.bus, resolution=16, queue_List=self.queue_List)
                 asyncio.create_task(self.pump_sender_task())
 
                 self.status_bar.setText("Status: CAN Connected")
@@ -566,54 +548,108 @@ class PumpControlWindow(QWidget):
 
         print("Consumer task started")
 
+        # Create log file, hard code name for now
+        self.consumer_task_logging_toggle = True
+
+        if self.consumer_task_logging_toggle == True :
+            try:
+                self.consumer_log = open("Consumer_task_log.csv", 'w', newline='')
+                self.consumer_csv_writer = csv.writer(self.consumer_log)
+                self.consumer_csv_writer.writerow([
+                    "Timestamp", "PT1401 (psi)", "PT1402 (psi)", "PT1403 (psi)",
+                    "T01 (°C)", "T02 (°C)", "Pump Feedback", "Flow Rate"
+                ])
+            except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Cannot open consumer task log file: {e}")
+                    self.consumer_task_logging_toggle = False # Disable logging if file cannot be created
+        else :
+            print("No Consumer Task Log")
+
         while True:
-            print("Consumer!")
+            #print("Consumer!")
 
-            await asyncio.sleep(1) # poll rate
+            await asyncio.sleep(0.3) # poll rate of 300 ms
 
-            #node_id, data_type, values = await self.queue.get()
+            node_id_volt, data_type_volt, values_volt = await self.queue_List[0].get()
+            print(node_id_volt, data_type_volt, values_volt)
+            node_id_temp, data_type_temp, values_temp = await self.queue_List[1].get()
+            print(node_id_temp, data_type_temp, values_temp)
+            node_id_current, data_type_current, values_current = await self.queue_List[2].get()
+            print(node_id_current, data_type_current, values_current)
 
-            # Testing plots with random data
-            testDataVal = random.uniform(5,10)
-            await self.update_plot_function(testDataVal, "TI10401")
+            #print(node_id, data_type, values)
 
-            testDataVal = random.uniform(5,10)
-            await self.update_plot_function(testDataVal, "TI10402")
+            # Moving the logging to the consumer task to log incoming data
+
+            # # Testing plots with random data
+            # testDataVal = random.uniform(5,10)
+            # await self.update_plot_function(testDataVal, "TI10401")
+
+            # testDataVal = random.uniform(5,10)
+            # await self.update_plot_function(testDataVal, "TI10402")
             
-            testDataVal = random.uniform(5,10)
-            await self.update_plot_function(testDataVal, "PT10401")
+            # testDataVal = random.uniform(5,10)
+            # await self.update_plot_function(testDataVal, "PT10401")
 
-            testDataVal = random.uniform(5,10)
-            await self.update_plot_function(testDataVal, "PT10402")
+            # testDataVal = random.uniform(5,10)
+            # await self.update_plot_function(testDataVal, "PT10402")
 
-            testDataVal = random.uniform(5,10)
-            await self.update_plot_function(testDataVal, "PUMP_SPEED")
+            # testDataVal = random.uniform(5,10)
+            # await self.update_plot_function(testDataVal, "PUMP_SPEED")
 
-            testDataVal = random.uniform(5,10)
-            await self.update_plot_function(testDataVal, "FE01")
+            # testDataVal = random.uniform(5,10)
+            # await self.update_plot_function(testDataVal, "FE01")
 
+            # Fix these functions at some point since data is already organized
+            if data_type_volt == 'voltage':
+                scaled_pressures = [values_volt[0] * 30.0, values_volt[1] * 60.0, values_volt[2] * 60.0]
+                for i in range(3):
+                    ch_data[i].append(scaled_pressures[i])
+                self.last_pressures = scaled_pressures
+                self.sensor_display.update_pressures(scaled_pressures)
 
-            # if data_type == 'voltage':
-            #     scaled_pressures = [values[0] * 30.0, values[1] * 60.0, values[2] * 60.0]
-            #     for i in range(3):
-            #         ch_data[i].append(scaled_pressures[i])
-            #     self.last_pressures = scaled_pressures
-            #     self.sensor_display.update_pressures(scaled_pressures)
+                # Update plot with values (decide here which schematic is being used based on active schematic check box)
+                await self.update_plot_function(values_volt[0], "PT10401")
+                await self.update_plot_function(values_volt[1], "PT10402")
 
-            # elif data_type == 'temperature':
-            #     if node_id == 0x182:
-            #         self.plot_canvas.last_temps = values[:2]
-            #         for i in range(2):
-            #             temp_data[i] = values[i]
-            #         self.sensor_display.update_temperatures(values[:2])
-            #         self.last_temps = values[:2]
-
-            #         # Update plot with values
+            if data_type_temp == 'temperature':
+                if node_id_temp == 0x182:
+                    self.plot_canvas.last_temps = values_temp[:2]
+                    for i in range(2):
+                        temp_data[i].append(values_temp[i])
+                    self.sensor_display.update_temperatures(values_temp[:2])
+                    self.last_temps = values_temp[:2]
+                    print("Updating temperature")
+                    # Update plot with values (decide here which schematic is being used based on active schematic check box)
+                    await self.update_plot_function(values_temp[0], "TI10401")
+                    await self.update_plot_function(values_temp[1], "TI10402")
             
-            # elif data_type == '4-20mA':
-            #     self.sensor_display.update_feedback(values[0], values[1])
+            if data_type_current == '4-20mA':
+                self.last_pump_feedback = values_current["pump_percent"]
+                self.last_flow_rate = values_current["flow_kg_per_h"]
+                self.sensor_display.update_feedback(values_current["pump_percent"], values_current["flow_kg_per_h"])
 
-            # self.queue.task_done()
+                # Update plot with values (decide here which schematic is being used based on active schematic check box)
+                await self.update_plot_function(values_current["pump_percent"], "PUMP")
+                await self.update_plot_function(values_current["flow_kg_per_h"], "FE01")
+
+            if self.consumer_task_logging_toggle == True:
+                timestamp = datetime.now().isoformat()
+                self.consumer_csv_writer.writerow([
+                    timestamp,
+                    self.last_pressures[0], 
+                    self.last_pressures[1], 
+                    self.last_pressures[2],
+                    self.last_temps[0], 
+                    self.last_temps[1],
+                    self.last_pump_feedback,
+                    self.last_flow_rate,
+                ])
+                self.consumer_log.flush()
+
+            self.queue_List[0].task_done()
+            self.queue_List[1].task_done()
+            self.queue_List[2].task_done()
 
     async def pump_sender_task(self):
         while True:
@@ -627,10 +663,10 @@ class PumpControlWindow(QWidget):
 
             if self.can_connected and self.bus:
                 try:
-                    await CanOpen.send_can_message(self.bus, 0x600, data, eStopValue, False)
+                    await CanOpen.send_can_message(self.bus, 0x600, data, eStopValue, False, testingFlag)
                 except Exception as e:
                     self.status_bar.setText(f"CAN Send Error: {str(e)}")
-                await CanOpen.send_can_message(self.bus, 0x600, data, eStopValue, False)
+                await CanOpen.send_can_message(self.bus, 0x600, data, eStopValue, False, testingFlag)
 
             if self.logging:
                 timestamp = datetime.now().isoformat()
@@ -644,8 +680,29 @@ class PumpControlWindow(QWidget):
                     rpm
                 ])
                 self.log_file.flush()
+                
 
             await asyncio.sleep(0.05)
+
+    # Figure out a new place to put this CAN gui interface layer for all sender and reciever tasks
+    # as multiple GUI elements/windows need to access the same CAN recieving and sending functionality
+    # consider creating a global sender queue that messages can be uploaded to and then processed by a singular 
+    # sender thread, that way the .send_can_message can be blocking or non blocking without affecting anything else,
+    # and can be accessed by anywhere in the program
+    async def esv_valve_sender_task(self, state):
+
+        data = []
+
+        if state == True :
+            data = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        else :
+            data = [0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        
+        try:
+            await CanOpen.send_can_message(self.bus, 0x191, data, eStopValue, False, testingFlag)
+        except Exception as e:
+            self.status_bar.setText(f"CAN Send Error: {str(e)}")
+        
 
     def update_plot(self):
         self.plot_canvas.update_plot()
@@ -657,7 +714,7 @@ class PumpControlWindow(QWidget):
         event.accept()
 
 class PAndIDGraphicWindow(QWidget):
-    def __init__(self, queue):
+    def __init__(self):
         super().__init__()
 
         self.setWindowTitle("P&ID Schematics")
@@ -665,8 +722,8 @@ class PAndIDGraphicWindow(QWidget):
         self.setStyleSheet("color: white; background-color: #212121;")
 
         tabWindowLayout = QVBoxLayout()
-        self.nh3pump = NH3PumpControlScene(queue)
-        self.nh3vaporizer = NH3VaporizerControlScene(queue)
+        self.nh3pump = NH3PumpControlScene()
+        self.nh3vaporizer = NH3VaporizerControlScene()
 
         #Create tab widget
         self.tab_widget = QTabWidget()
@@ -692,12 +749,17 @@ class PAndIDGraphicWindow(QWidget):
         self.setLayout(tabWindowLayout)
 
 async def main_async():
-    queue = asyncio.Queue()
+
+    voltage_queue = asyncio.Queue(maxsize=3)
+    temperature_queue = asyncio.Queue(maxsize=3)
+    four_to_20_current_queue = asyncio.Queue(maxsize=3)
+
+    queue_List = [voltage_queue, temperature_queue, four_to_20_current_queue]
 
     app = QApplication(sys.argv)
 
-    pAndIdGraphicWindow = PAndIDGraphicWindow(queue=queue)
-    controlWindow = PumpControlWindow(pAndIdGraphicWindow.nh3pump.run_plots, bus=None, queue=queue)  # Don't pass the bus initially
+    pAndIdGraphicWindow = PAndIDGraphicWindow()
+    controlWindow = PumpControlWindow(pAndIdGraphicWindow.nh3pump.run_plots, bus=None, queue_List=queue_List)  # Don't pass the bus initially
     # Pump Control window needs major refactor so consumer task can live outside of it as it needs to access
     # items from PAndIdGraphicWindow which contains the NH3 Pump and Vaporizer control scenes which contain the plots
     # Consumer task needs to be a library like function so it is seperated from the GUI code to follow proper object oriented
@@ -715,6 +777,9 @@ async def main_async():
         await asyncio.sleep(0.01)
         #print("Main Loop")
         app.processEvents()
+        # await temperature_queue.put((0x182, 'temperature', [random.randint(1, 100) for _ in range(8)]))
+        # await voltage_queue.put((0x182, 'voltage', [random.randint(1, 5) for _ in range(8)]))
+        # await four_to_20_current_queue.put((0x1FE, '4-20mA', [random.randint(1, 100) for _ in range(8)]))
 
 
 if __name__ == "__main__":

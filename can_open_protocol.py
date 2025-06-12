@@ -1,3 +1,4 @@
+
 import can
 import time 
 import asyncio
@@ -221,41 +222,65 @@ class CanOpen:
             raw_out2 = 0
 
         return raw_out1, raw_out2
+    
+
 
     
     @staticmethod
-    def start_listener(bus: can.Bus, resolution, queue: asyncio.Queue = None):
+    def start_listener(bus: can.Bus, resolution, queue_List: list[asyncio.Queue] = None):
         pt_id = 0x181
         tc_id_map = {0x182: 2, 0x183: 3, 0x184: 4, 0x185: 5}
         fourtwenty_id = 0x1FE 
+
+        print("Creating listener")
 
         class _AsyncListener(can.Listener):
             def on_message_received(self, msg):
                 node_id = msg.arbitration_id
 
+                #print("Starting listener")
+
                 if node_id == pt_id:
                     voltages = CanOpen.parse_5vadc_tpdo(msg, resolution)
-                    print(f"Node {node_id}: {voltages}")
-                    if queue:
-                        asyncio.create_task(queue.put((node_id, 'voltage', voltages)))
+                    #print(f"Node {node_id}: {voltages}")
+                    if queue_List[0]:
+                        #print("Queue updating with voltages")
+
+                        if (queue_List[0].full()) :
+                            asyncio.create_task(queue_List[0].get()) # Perform a get to remove oldest value which also shifts everything over
+
+                        # Now queue should have one empty space to append new value
+                        asyncio.create_task(queue_List[0].put((node_id, 'voltage', voltages)))
 
                 elif node_id in tc_id_map:
                     temps = CanOpen.parse_temp_tpdo(msg)
-                    print(f"Node {node_id}: {temps}")
-                    if queue:
-                        asyncio.create_task(queue.put((node_id, 'temperature', temps)))
+                    #print(f"Node {node_id}: {temps}")
+                    if queue_List[1]:
+                        #print("Queue updating with voltages")
+
+                        if (queue_List[1].full()) :
+                            asyncio.create_task(queue_List[1].get()) # Perform a get to remove oldest value which also shifts everything over
+
+                        # Now queue should have one empty space to append new value
+                        asyncio.create_task(queue_List[1].put((node_id, 'temperature', temps)))
 
                 elif node_id == fourtwenty_id:
                     signal_data = CanOpen.parse_i_tpdo(msg)
-                    print(f"Node {node_id}: {signal_data}")
-                    if queue:
-                        asyncio.create_task(queue.put((node_id, '4-20mA', signal_data)))
+                    #print(f"Node {node_id}: {signal_data}")
+                    if queue_List[2]:
+                        #print("Queue updating with current")
+
+                        if (queue_List[2].full()) :
+                            asyncio.create_task(queue_List[2].get()) # Perform a get to remove oldest value which also shifts everything over
+
+                        # Now queue should have one empty space to append new value
+                        asyncio.create_task(queue_List[2].put((node_id, '4-20mA', signal_data)))
 
         return can.Notifier(bus, [_AsyncListener()], loop=asyncio.get_running_loop())
 
     
     @staticmethod
-    async def send_can_message(can_bus: can.Bus, can_id: int, data: List[int], eStopFlag, esv_n2_flag):
+    async def send_can_message(can_bus: can.Bus, can_id: int, data: List[int], eStopFlag, esv_n2_flag, testing_flag):
         """nonblocking can_sender (hopefully)
 
         Args:
@@ -266,33 +291,41 @@ class CanOpen:
         Raises:
             ValueError: exception error
         """
+        if testing_flag:
+            msg = can.Message(arbitration_id=0x181,
+                            data=[0x05, 0x01, 0x7A, 0x00, 0x32, 0x01, 0x00, 0x00],
+                            is_extended_id=False)
+            
+            print("Sending CAN message over virtual bus")
 
-        if (eStopFlag == True) :
-            msg = can.Message(arbitration_id=can_id, data=0x000000000, is_extended_id=False)
-            #print("PUMP WAS E-STOPPED")
-        else:
-            if len(data) > 8:
-                raise ValueError("CAN data cannot exceed 8 bytes")
-            if (esv_n2_flag):
-                #send esv on
-                x = 1
-            msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=False)
+            can_bus.send(msg)
+        else :
+        
+            if (eStopFlag == True) :
+                msg = can.Message(arbitration_id=can_id, data=0x000000000, is_extended_id=False)
+                #print("PUMP WAS E-STOPPED")
+            else:
+                if len(data) > 8:
+                    raise ValueError("CAN data cannot exceed 8 bytes")
+                if (esv_n2_flag):
+                    #send esv on
+                    x = 1
+                msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=False)
 
-            try:
-                can_bus.send(msg)
-                #print(f"[SEND] Sent CAN message: COB-ID=0x{can_id:X}, Data={data}")
-            except can.CanError as e:
-                print(f"[ERROR] Failed to send CAN message: {e}")
+                try:
+                    can_bus.send(msg)
+                    #print(f"[SEND] Sent CAN message: COB-ID=0x{can_id:X}, Data={data}")
+                except can.CanError as e:
+                    print(f"[ERROR] Failed to send CAN message: {e}")
 
         
-
-
 
 def main():
 
     # === CONFIGURATION ===
     channel = "PCAN_USBBUS1"
-    bustype = "pcan"
+    #bustype = "pcan"
+    bustype = "virtual"
     bitrate = 500e3
     node_ids = [0x23]                # List of CANopen node IDs to configure
     num_tpdos = 3                    # How many TPDOs to setup per node

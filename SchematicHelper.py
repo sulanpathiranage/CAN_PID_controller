@@ -42,6 +42,7 @@ from PyQt6.QtWidgets import (
 
 from PyQt6.QtWidgets import QPushButton, QGraphicsProxyWidget, QGraphicsScene, QGraphicsTextItem
 import pyqtgraph as pg  # import after PyQt6 so pyqtgraph uses PyQt6 internally
+from collections import deque
 
 class SchematicHelperFunctions:
 
@@ -318,7 +319,11 @@ class CreatePlotWindow(QDialog):
         self.poll_rate = poll_rate
         #self.data_func = data_func
         self.labelUpdateFunc = label_func
-        self.data = [] # Data stored here, as part of the class
+
+        self.history_len = 100
+
+        #self.data = [] # Data stored here, as part of the class
+        self.data  = deque([0.0] * self.history_len, maxlen=self.history_len)
 
         self.label = QLabel("Starting...")
         layout = QVBoxLayout()
@@ -348,14 +353,16 @@ class CreatePlotWindow(QDialog):
         # await asyncio.sleep(self.poll_rate)
         # value = await self.data_func()
         self.data.append(value)
-        print("Updating plots")
+        #print("Updating plots")
         self.update_plot_signal.emit(list(self.data))
         self.update_label_signal.emit(value)
             
     def update_plot(self, data):
 
-        time_axis = [i * self.poll_rate for i in range(len(data))]
-        self.plot_widget.setXRange(0, len(time_axis))
+        #time_axis = [i * self.poll_rate for i in range(len(data))]
+        time_axis = [i * 0.1 for i in range(self.history_len)] # For sliding window of only last 10 seconds, otherwise use line above
+
+        #self.plot_widget.setXRange(0, len(time_axis)) # Use for non sliding window plot
         self.curve.setData(time_axis, data)
         self.plot_widget.update()
 
