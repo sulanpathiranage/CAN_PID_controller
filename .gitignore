@@ -3,3 +3,7 @@
 __pycache__/
 
 *.csv
+*.spec
+
+build/
+dist/
