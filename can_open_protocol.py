@@ -2,7 +2,8 @@
 import can
 import time 
 import asyncio
-from typing import List
+from datetime import datetime
+from typing import List, Dict, Any
 
 
 class CanOpen:
@@ -28,14 +29,14 @@ class CanOpen:
         data += [0x00] * (8 - len(data))
         msg = can.Message(cob_id, data=data, is_extended_id=False)
         can_bus.send(msg)
-        print(f"Sent message: COB-ID=0x{cob_id:X}, Data={data}")
+        # print(f"Sent message: COB-ID=0x{cob_id:X}, Data={data}")
 
         # Always listen for a response immediately after sending
-        response = CanOpen.listen_for_responses(can_bus, 1.0)
-        if response:
-            print(f"Received response: COB-ID=0x{response.arbitration_id:X}, Data={response.data.hex()}")
-        else:
-            print(f"No response received within {1} seconds for COB-ID 0x{cob_id:X}")
+        # response = CanOpen.listen_for_responses(can_bus, 1.0)
+        # if response:
+        #     # print(f"Received response: COB-ID=0x{response.arbitration_id:X}, Data={response.data.hex()}")
+        # else:
+        #     # print(f"No response received within {1} seconds for COB-ID 0x{cob_id:X}")
 
     @staticmethod
     def listen_for_responses(bus, atimeout):
@@ -148,7 +149,7 @@ class CanOpen:
             data.append(temperature)
         return data
     
-    @staticmethod    
+    @staticmethod
     def mA_to_percent(current_mA):
         if current_mA < 4:
             return 0.0
@@ -169,8 +170,8 @@ class CanOpen:
         data = []
 
         for i in range(0, 8, 2):
-            raw = int.from_bytes(msg.data[i:i+2], byteorder='little', signed=True)
-            current = raw * 3.1e-4  # current in mA (0–20 mA)
+            raw = int.from_bytes(msg.data[i:i+2], byteorder='little', signed=False)
+            current = (raw / 65535) * 50  # Scale raw unsigned 16-bit to 0-50 mA
             data.append(current)
 
         # Interpret signals:
@@ -185,7 +186,6 @@ class CanOpen:
             "pump_percent": pump_percent,
             "flow_kg_per_h": flow_kg_per_h
         }
-
 
 
 
@@ -227,55 +227,73 @@ class CanOpen:
 
     
     @staticmethod
-    def start_listener(bus: can.Bus, resolution, queue_List: list[asyncio.Queue] = None):
-        pt_id = 0x181
-        tc_id_map = {0x182: 2, 0x183: 3, 0x184: 4, 0x185: 5}
-        fourtwenty_id = 0x1FE 
+    def start_listener(bus: can.Bus, resolution, data_queue: asyncio.Queue):
+        """
+        Starts a CAN bus listener that parses incoming messages and puts structured data
+        into a single asyncio.Queue.
 
-        print("Creating listener")
+        :param bus: The python-can bus object to listen on.
+        :param resolution: Resolution parameter for ADC parsing (e.g., 16-bit).
+        :param data_queue: The single asyncio.Queue to put structured parsed messages into.
+                           Each message will be a dictionary with 'node_id', 'data_type', 'values', and 'timestamp'.
+        """
+        pt_id = 0x181  # Pressure Transducer CAN ID
+        tc_id_map = {0x182: 2, 0x183: 3, 0x184: 4, 0x185: 5} # Thermocouple CAN IDs mapping (mapping might be unused now)
+        fourtwenty_id = 0x1FE # 4-20mA sensor CAN ID
+
+        print("Creating CAN listener...")
 
         class _AsyncListener(can.Listener):
-            def on_message_received(self, msg):
+            """
+            Internal asynchronous CAN message listener.
+            This class defines how incoming CAN messages are handled.
+            """
+            def on_message_received(self, msg: can.Message):
+                """
+                Callback method invoked when a CAN message is received.
+                Parses the message based on arbitration ID and puts structured data
+                into the provided data_queue.
+                """
                 node_id = msg.arbitration_id
-
-                #print("Starting listener")
+                
+                # Prepare a common message dictionary structure
+                parsed_message: Dict[str, Any] = {
+                    "node_id": node_id,
+                    "timestamp": datetime.now().isoformat(), # Add a timestamp for consistency
+                    "data_type": None, # Will be set below
+                    "values": None     # Will be set below
+                }
 
                 if node_id == pt_id:
                     voltages = CanOpen.parse_5vadc_tpdo(msg, resolution)
-                    #print(f"Node {node_id}: {voltages}")
-                    if queue_List[0]:
-                        #print("Queue updating with voltages")
-
-                        if (queue_List[0].full()) :
-                            asyncio.create_task(queue_List[0].get()) # Perform a get to remove oldest value which also shifts everything over
-
-                        # Now queue should have one empty space to append new value
-                        asyncio.create_task(queue_List[0].put((node_id, 'voltage', voltages)))
-
+                    parsed_message["data_type"] = 'voltage'
+                    parsed_message["values"] = voltages
                 elif node_id in tc_id_map:
                     temps = CanOpen.parse_temp_tpdo(msg)
-                    #print(f"Node {node_id}: {temps}")
-                    if queue_List[1]:
-                        #print("Queue updating with voltages")
-
-                        if (queue_List[1].full()) :
-                            asyncio.create_task(queue_List[1].get()) # Perform a get to remove oldest value which also shifts everything over
-
-                        # Now queue should have one empty space to append new value
-                        asyncio.create_task(queue_List[1].put((node_id, 'temperature', temps)))
-
+                    parsed_message["data_type"] = 'temperature'
+                    parsed_message["values"] = temps
                 elif node_id == fourtwenty_id:
                     signal_data = CanOpen.parse_i_tpdo(msg)
-                    #print(f"Node {node_id}: {signal_data}")
-                    if queue_List[2]:
-                        #print("Queue updating with current")
+                    parsed_message["data_type"] = '4-20mA'
+                    parsed_message["values"] = signal_data # This will be a dict itself
+                else:
+                    # If the message ID is not recognized, skip processing or log it
+                    # print(f"Unhandled CAN message ID: {hex(node_id)}")
+                    return # Exit if unhandled ID
 
-                        if (queue_List[2].full()) :
-                            asyncio.create_task(queue_List[2].get()) # Perform a get to remove oldest value which also shifts everything over
+                # Try to put the structured message into the queue
+                try:
+                    data_queue.put_nowait(parsed_message)
+                except asyncio.QueueFull:
+                    # If queue is full, remove the oldest item and then add the new one
+                    try:
+                        data_queue.get_nowait() # Remove oldest
+                        data_queue.put_nowait(parsed_message) # Add new
+                        # print("Queue was full, dropped oldest message.") # Optional debug
+                    except Exception as e:
+                        print(f"Error handling full queue: {e}")
 
-                        # Now queue should have one empty space to append new value
-                        asyncio.create_task(queue_List[2].put((node_id, '4-20mA', signal_data)))
-
+        # Create and return the CAN Notifier, which manages the listener in the asyncio loop
         return can.Notifier(bus, [_AsyncListener()], loop=asyncio.get_running_loop())
 
     
@@ -301,15 +319,12 @@ class CanOpen:
             can_bus.send(msg)
         else :
         
-            if (eStopFlag == True) :
+            if (eStopFlag) :
                 msg = can.Message(arbitration_id=can_id, data=0x000000000, is_extended_id=False)
                 #print("PUMP WAS E-STOPPED")
             else:
                 if len(data) > 8:
                     raise ValueError("CAN data cannot exceed 8 bytes")
-                if (esv_n2_flag):
-                    #send esv on
-                    x = 1
                 msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=False)
 
                 try:

@@ -1,31 +1,25 @@
 import os
 os.environ["PYQTGRAPH_QT_LIB"] = "PyQt6"  # Force pyqtgraph to use PyQt6
 
-import random
 import sys
-import time
 import asyncio
 import csv
 from datetime import datetime
 from collections import deque
-from typing import List
 
 import can
 import pyqtgraph as pg
 
 import matplotlib
 matplotlib.use('QtAgg')
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 # PyQt6 Imports
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
-    QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
+     QGridLayout, QSizePolicy, QMessageBox,
     QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget,
-    QGraphicsView, QGraphicsScene, QGraphicsPolygonItem, QGraphicsTextItem,
-    QGraphicsRectItem, QGraphicsLineItem, QGraphicsProxyWidget, QSpacerItem
+
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
@@ -39,11 +33,11 @@ from can_open_protocol import CanOpen
 
 history_len = 100
 ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
-temp_data  =  [deque([0.0] * history_len, maxlen=history_len) for _ in range(2)]
+temp_data  =  [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
 
-eStopValue = False # Default E Stop to off
+eStopValue = False 
 
-testingFlag = False # Global testing flag for running with virtual bus
+testingFlag = False 
 
 class PermanentRightHandDisplay(QWidget):
     def __init__(self):
@@ -58,24 +52,24 @@ class PermanentRightHandDisplay(QWidget):
         self.eStopButton.setStyleSheet(Stylesheets.EStopPushButtonStyleSheet())
         self.eStopButton.clicked.connect(self.toggleEStop)
 
-        self.safetyLabelOne = QLabel("Safety Critical Info Label 1")
-        self.safetyLabelTwo = QLabel("Safety Critical Info Label 2")
-        self.safetyLabelThree = QLabel("Safety Critical Info Label 3")
+        # self.safetyLabelOne = QLabel("Safety Critical Info Label 1")
+        # self.safetyLabelTwo = QLabel("Safety Critical Info Label 2")
+        # self.safetyLabelThree = QLabel("Safety Critical Info Label 3")
         
-        self.safetyControlPushButtonOne = QPushButton("Safety Control One")
-        self.safetyControlPushButtonOne.setFixedSize(150, 80)
-        self.safetyControlPushButtonOne.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
+        # self.safetyControlPushButtonOne = QPushButton("Safety Control One")
+        # self.safetyControlPushButtonOne.setFixedSize(150, 80)
+        # self.safetyControlPushButtonOne.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
 
-        self.safetyControlPushButtonTwo = QPushButton("Safety Control Two")
-        self.safetyControlPushButtonTwo.setFixedSize(150, 80)
-        self.safetyControlPushButtonTwo.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
+        # self.safetyControlPushButtonTwo = QPushButton("Safety Control Two")
+        # self.safetyControlPushButtonTwo.setFixedSize(150, 80)
+        # self.safetyControlPushButtonTwo.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
 
         #Put contents in layout
-        rightHandVerticalLayout.addWidget(self.safetyLabelOne)
-        rightHandVerticalLayout.addWidget(self.safetyLabelTwo)
-        rightHandVerticalLayout.addWidget(self.safetyLabelThree)
-        rightHandVerticalLayout.addWidget(self.safetyControlPushButtonOne)
-        rightHandVerticalLayout.addWidget(self.safetyControlPushButtonTwo)
+        # rightHandVerticalLayout.addWidget(self.safetyLabelOne)
+        # rightHandVerticalLayout.addWidget(self.safetyLabelTwo)
+        # rightHandVerticalLayout.addWidget(self.safetyLabelThree)
+        # rightHandVerticalLayout.addWidget(self.safetyControlPushButtonOne)
+        # rightHandVerticalLayout.addWidget(self.safetyControlPushButtonTwo)
         rightHandVerticalLayout.addWidget(self.eStopButton)
 
         #Set self "PermanentRightHandDisplay" widget layout
@@ -83,7 +77,7 @@ class PermanentRightHandDisplay(QWidget):
 
     def toggleEStop(self):
         global eStopValue
-        if (eStopValue == False):
+        if not (eStopValue):
             eStopValue = True
             self.eStopButton.setText("E-STOP\nACTIVE")
         else :
@@ -149,8 +143,6 @@ class PumpControlWidget(QWidget):
     def get_state(self):
         return int(self.pump_on_checkbox.isChecked()), self.speed_slider.value()
     
-
-
 class PyqtgraphPlotWidget(QWidget):
     def __init__(self):
         super().__init__()
@@ -160,8 +152,8 @@ class PyqtgraphPlotWidget(QWidget):
         self.label_area = QVBoxLayout()
 
         self.pressure_names = ["PT1401", "PT1402", "PT1403"]
-        self.temperature_names = ["T01", "T02"]
-        self.last_temps = [None, None]
+        self.temperature_names = ["T01", "T02", "Heater"]
+        self.last_temps = [None, None, None]
 
         self.pressure_curves = []
         self.temperature_curves = []
@@ -190,14 +182,15 @@ class PyqtgraphPlotWidget(QWidget):
         temp_widget.getAxis("left").setStyle(tickFont=pg.Qt.QtGui.QFont("Arial", 10))
 
         # Add legend to differentiate curves
-        legend = temp_widget.addLegend()
+        # legend = temp_widget.addLegend()
 
         # Create curves for T01 and T02 with different colors
         curve1 = temp_widget.plot(pen=pg.mkPen('r', width=2), name="T01")
         curve2 = temp_widget.plot(pen=pg.mkPen('g', width=2), name="T02")
+        curve3 = temp_widget.plot(pen=pg.mkPen('b', width=2), name="Heater")
 
         # Store curves for later updates
-        self.temperature_curves = [curve1, curve2]
+        self.temperature_curves = [curve1, curve2, curve3]
 
         # Add single widget to layout
         self.plot_area.addWidget(temp_widget)
@@ -208,15 +201,8 @@ class PyqtgraphPlotWidget(QWidget):
         for i in range(3):
             self.pressure_curves[i].setData(time_axis, list(ch_data[i]))
         #if hasattr(self, 'temp_data'):
-        for i in range(2):
+        for i in range(3):
             self.temperature_curves[i].setData(time_axis, list(temp_data[i]))
-
-        if self.last_temps and None not in self.last_temps:
-            # self.temp_readout.setText(
-            #     f"<b>T01:</b> {self.last_temps[0]:.1f} °C<br><b>T02:</b> {self.last_temps[1]:.1f} °C"
-            # )
-            x=1 # temporary to get python to shut up
-
 
 
 class SensorDisplayWidget(QWidget):
@@ -256,7 +242,7 @@ class SensorDisplayWidget(QWidget):
         layout.addWidget(temp_title)
 
         # Temperature labels
-        for name in ["T01", "T02"]:
+        for name in ["T01", "T02", "Heater"]:
             label = QLabel(f"{name}: -- °C")
             label.setAlignment(Qt.AlignmentFlag.AlignLeft)
             label.setStyleSheet(Stylesheets.LabelStlyeSheet())
@@ -279,7 +265,6 @@ class SensorDisplayWidget(QWidget):
         for i, temp in enumerate(temperatures):
             self.temperature_labels[i].setText(f"T0{i+1}: {temp:.1f} °C")
 
-
 class PIDControlWidget(QWidget):
     def __init__(self):
         super().__init__()
@@ -296,18 +281,27 @@ class PIDControlWidget(QWidget):
                 
         layout.addWidget(self.output_label)
 
-        self.kp_input = QDoubleSpinBox(); self.kp_input.setValue(1.0)
-        self.ki_input = QDoubleSpinBox(); self.ki_input.setValue(0.0)
-        self.kd_input = QDoubleSpinBox(); self.kd_input.setValue(0.0)
-        self.setpoint_input = QDoubleSpinBox(); self.setpoint_input.setValue(100.0)
+        self.kp_input = QDoubleSpinBox()
+        self.kp_input.setValue(1.0)
+        self.ki_input = QDoubleSpinBox()
+        self.ki_input.setValue(0.0)
+        self.kd_input = QDoubleSpinBox()
+        self.kd_input.setValue(0.0)
+        self.setpoint_input = QDoubleSpinBox()
+        self.setpoint_input.setValue(100.0)
 
         for spinbox in [self.kp_input, self.ki_input, self.kd_input, self.setpoint_input]:
-            spinbox.setRange(0, 1000); spinbox.setDecimals(2)
+            spinbox.setRange(0, 1000)
+            spinbox.setDecimals(2)
 
-        layout.addWidget(QLabel("Kp")); layout.addWidget(self.kp_input)
-        layout.addWidget(QLabel("Ki")); layout.addWidget(self.ki_input)
-        layout.addWidget(QLabel("Kd")); layout.addWidget(self.kd_input)
-        layout.addWidget(QLabel("Setpoint")); layout.addWidget(self.setpoint_input)
+        layout.addWidget(QLabel("Kp"))
+        layout.addWidget(self.kp_input)
+        layout.addWidget(QLabel("Ki"))
+        layout.addWidget(self.ki_input)
+        layout.addWidget(QLabel("Kd"))
+        layout.addWidget(self.kd_input)
+        layout.addWidget(QLabel("Setpoint"))
+        layout.addWidget(self.setpoint_input)
 
         self.toggle_button = QPushButton("Enable PID")
         self.toggle_button.setStyleSheet("""
@@ -368,7 +362,7 @@ class PumpControlWindow(QWidget):
         self.log_file = None
         self.csv_writer = None
         self.last_pressures = [0.0, 0.0, 0.0]
-        self.last_temps = [0.0, 0.0]
+        self.last_temps = [0.0, 0.0, 0.0]
         self.last_pump_feedback = 0.0
         self.last_flow_rate = 0.0
 
@@ -420,13 +414,18 @@ class PumpControlWindow(QWidget):
         pid_output_label = QLabel("PID Output: -- %")
         pid_output_label.setStyleSheet("font-size: 14px;")
 
-        kp = QDoubleSpinBox(); kp.setValue(1.0)
-        ki = QDoubleSpinBox(); ki.setValue(0.0)
-        kd = QDoubleSpinBox(); kd.setValue(0.0)
-        setpoint = QDoubleSpinBox(); setpoint.setValue(100.0)
+        kp = QDoubleSpinBox()
+        kp.setValue(1.0)
+        ki = QDoubleSpinBox()
+        ki.setValue(0.0)
+        kd = QDoubleSpinBox()
+        kd.setValue(0.0)
+        setpoint = QDoubleSpinBox()
+        setpoint.setValue(100.0)
 
         for box in [kp, ki, kd, setpoint]:
-            box.setRange(0, 1000); box.setDecimals(2)
+            box.setRange(0, 1000)
+            box.setDecimals(2)
 
         label_row = QHBoxLayout()
         label_row.addWidget(QLabel("Kp"))
@@ -546,36 +545,32 @@ class PumpControlWindow(QWidget):
 
     async def consumer_task(self):
 
-        print("Consumer task started")
 
         # Create log file, hard code name for now
-        self.consumer_task_logging_toggle = True
+        # self.consumer_task_logging_toggle = True
 
-        if self.consumer_task_logging_toggle == True :
-            try:
-                self.consumer_log = open("Consumer_task_log.csv", 'w', newline='')
-                self.consumer_csv_writer = csv.writer(self.consumer_log)
-                self.consumer_csv_writer.writerow([
-                    "Timestamp", "PT1401 (psi)", "PT1402 (psi)", "PT1403 (psi)",
-                    "T01 (°C)", "T02 (°C)", "Pump Feedback", "Flow Rate"
-                ])
-            except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Cannot open consumer task log file: {e}")
-                    self.consumer_task_logging_toggle = False # Disable logging if file cannot be created
-        else :
-            print("No Consumer Task Log")
+        # if self.consumer_task_logging_toggle == True :
+        #     try:
+        #         self.consumer_log = open("Consumer_task_log.csv", 'w', newline='')
+        #         self.consumer_csv_writer = csv.writer(self.consumer_log)
+        #         self.consumer_csv_writer.writerow([
+        #             "Timestamp", "PT1401 (psi)", "PT1402 (psi)", "PT1403 (psi)",
+        #             "T01 (°C)", "T02 (°C)", "Pump Feedback", "Flow Rate"
+        #         ])
+        #     except Exception as e:
+        #             QMessageBox.critical(self, "Error", f"Cannot open consumer task log file: {e}")
+        #             self.consumer_task_logging_toggle = False # Disable logging if file cannot be created
+        # else :
+        #     print("No Consumer Task Log")
 
         while True:
             #print("Consumer!")
 
-            await asyncio.sleep(0.3) # poll rate of 300 ms
+            await asyncio.sleep(0.2) # poll rate of 300 ms
 
             node_id_volt, data_type_volt, values_volt = await self.queue_List[0].get()
-            print(node_id_volt, data_type_volt, values_volt)
             node_id_temp, data_type_temp, values_temp = await self.queue_List[1].get()
-            print(node_id_temp, data_type_temp, values_temp)
             node_id_current, data_type_current, values_current = await self.queue_List[2].get()
-            print(node_id_current, data_type_current, values_current)
 
             #print(node_id, data_type, values)
 
@@ -614,38 +609,41 @@ class PumpControlWindow(QWidget):
 
             if data_type_temp == 'temperature':
                 if node_id_temp == 0x182:
-                    self.plot_canvas.last_temps = values_temp[:2]
-                    for i in range(2):
+                    self.plot_canvas.last_temps = values_temp[:3]
+                    for i in range(3):
                         temp_data[i].append(values_temp[i])
-                    self.sensor_display.update_temperatures(values_temp[:2])
-                    self.last_temps = values_temp[:2]
+                    self.sensor_display.update_temperatures(values_temp[:3])
+                    self.last_temps = values_temp[:3]
                     print("Updating temperature")
                     # Update plot with values (decide here which schematic is being used based on active schematic check box)
                     await self.update_plot_function(values_temp[0], "TI10401")
                     await self.update_plot_function(values_temp[1], "TI10402")
+                    await self.update_plot_function(values_temp[2], "Heater")
+                    
             
             if data_type_current == '4-20mA':
                 self.last_pump_feedback = values_current["pump_percent"]
                 self.last_flow_rate = values_current["flow_kg_per_h"]
+                print(f"Processing 4-20mA data: Node ID={node_id_current}, Data={values_current}")
                 self.sensor_display.update_feedback(values_current["pump_percent"], values_current["flow_kg_per_h"])
 
                 # Update plot with values (decide here which schematic is being used based on active schematic check box)
                 await self.update_plot_function(values_current["pump_percent"], "PUMP")
                 await self.update_plot_function(values_current["flow_kg_per_h"], "FE01")
 
-            if self.consumer_task_logging_toggle == True:
-                timestamp = datetime.now().isoformat()
-                self.consumer_csv_writer.writerow([
-                    timestamp,
-                    self.last_pressures[0], 
-                    self.last_pressures[1], 
-                    self.last_pressures[2],
-                    self.last_temps[0], 
-                    self.last_temps[1],
-                    self.last_pump_feedback,
-                    self.last_flow_rate,
-                ])
-                self.consumer_log.flush()
+            # if self.consumer_task_logging_toggle == True:
+            #     timestamp = datetime.now().isoformat()
+            #     self.consumer_csv_writer.writerow([
+            #         timestamp,
+            #         self.last_pressures[0], 
+            #         self.last_pressures[1], 
+            #         self.last_pressures[2],
+            #         self.last_temps[0], 
+            #         self.last_temps[1],
+            #         self.last_pump_feedback,
+            #         self.last_flow_rate,
+            #     ])
+            #     self.consumer_log.flush()
 
             self.queue_List[0].task_done()
             self.queue_List[1].task_done()
@@ -693,7 +691,7 @@ class PumpControlWindow(QWidget):
 
         data = []
 
-        if state == True :
+        if state :
             data = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
         else :
             data = [0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
@@ -750,9 +748,9 @@ class PAndIDGraphicWindow(QWidget):
 
 async def main_async():
 
-    voltage_queue = asyncio.Queue(maxsize=3)
-    temperature_queue = asyncio.Queue(maxsize=3)
-    four_to_20_current_queue = asyncio.Queue(maxsize=3)
+    voltage_queue = asyncio.Queue(maxsize=10)
+    temperature_queue = asyncio.Queue(maxsize=10)
+    four_to_20_current_queue = asyncio.Queue(maxsize=10)
 
     queue_List = [voltage_queue, temperature_queue, four_to_20_current_queue]
 
