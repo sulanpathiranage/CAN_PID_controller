@@ -3,7 +3,7 @@ import can
 import time 
 import asyncio
 from typing import List
-from can_open_protocol import CanOpen
+from can_open_protocol import CanOpen, CanData
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox, 
@@ -149,10 +149,7 @@ class PyqtgraphPlotWidget(QWidget):
             for i in range(2):
                 self.temperature_curves[i].setData(time_axis, list(self.temperature_data[i]))
 
-        if self.last_temps and None not in self.last_temps:
-            self.temp_readout.setText(
-                f"<b>T01:</b> {self.last_temps[0]:.1f} °C<br><b>T02:</b> {self.last_temps[1]:.1f} °C"
-            )
+
 
 
 
@@ -435,31 +432,32 @@ class MainWindow(QWidget):
 
     async def consumer_task(self):
         while True:
-            node_id, data_type, values = await self.queue.get()
+            data: CanData = await self.queue.get()
             timestamp = datetime.now().isoformat()
 
-            if data_type == 'voltage':
+            if data.voltage is not None:
                 scaled_pressures = [
-                    values[0] * 30.0,
-                    values[1] * 60.0,
-                    values[2] * 60.0
+                    data.voltage[0] * 30.0,
+                    data.voltage[1] * 60.0,
+                    data.voltage[2] * 60.0
                 ]
                 for i in range(3):
                     ch_data[i].append(scaled_pressures[i])
                 self.last_pressures = scaled_pressures
                 self.sensor_display.update_pressures(scaled_pressures)
 
-            elif data_type == 'temperature':
-                if node_id == 0x182:
-                    self.plot_canvas.last_temps = values[:2]
+            elif data.temperature is not None:
+                if data.node_id == 0x182:
+                    self.plot_canvas.last_temps = data.temperature[:2]
                     self.plot_canvas.temperature_data = [
-                        deque([values[0]] * history_len, maxlen=history_len),
-                        deque([values[1]] * history_len, maxlen=history_len)
+                        deque([data.temperature[0]] * history_len, maxlen=history_len),
+                        deque([data.temperature[1]] * history_len, maxlen=history_len)
                     ]
-            
-            elif data_type == '4-20mA':
-                self.sensor_display.update_feedback(values[0], values[1])
+                    self.sensor_display.update_temperatures(data.temperature[:2])
+                    self.last_temps = data.temperature[:2]
 
+            elif data.current_4_20mA is not None:
+                self.sensor_display.update_feedback(data.current_4_20mA[0], data.current_4_20mA[1])
 
             self.queue.task_done()
 

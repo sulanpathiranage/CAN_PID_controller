@@ -4,6 +4,16 @@ import asyncio
 from typing import List
 
 
+from dataclasses import dataclass
+
+@dataclass
+class CanData:
+    node_id: int
+    voltage: list[float] = None
+    temperature: list[float] = None
+    current_4_20mA: list[float] = None
+
+
 class CanOpen:
 
     @staticmethod
@@ -220,38 +230,55 @@ class CanOpen:
 
         return raw_out1, raw_out2
 
+
     
     @staticmethod
     def start_listener(bus: can.Bus, resolution, queue: asyncio.Queue = None):
         pt_id = 0x181
         tc_id_map = {0x182: 2, 0x183: 3, 0x184: 4, 0x185: 5}
-        fourtwenty_id = 0x1FE 
+        fourtwenty_id = 0x1FE
+
+        loop = asyncio.get_running_loop()
+
+        async def safe_put(item):
+            try:
+                if queue.full():
+                    await queue.get()  # drop oldest
+                await queue.put(item)
+            except Exception as e:
+                print(f"[Queue Error] {e}")
 
         class _AsyncListener(can.Listener):
             def on_message_received(self, msg):
+                if not queue:
+                    return
+
                 node_id = msg.arbitration_id
 
-                if node_id == pt_id:
-                    voltages = CanOpen.parse_5vadc_tpdo(msg, resolution)
-                    print(f"Node {node_id}: {voltages}")
-                    if queue:
-                        asyncio.create_task(queue.put((node_id, 'voltage', voltages)))
+                try:
+                    if node_id == pt_id:
+                        voltages = CanOpen.parse_5vadc_tpdo(msg, resolution)
+                        data = CanData(node_id=node_id, voltage=voltages)
+                        print(f"Node {node_id}: Voltage {voltages}")
+                        asyncio.run_coroutine_threadsafe(safe_put(data), loop)
 
-                elif node_id in tc_id_map:
-                    temps = CanOpen.parse_temp_tpdo(msg)
-                    print(f"Node {node_id}: {temps}")
-                    if queue:
-                        asyncio.create_task(queue.put((node_id, 'temperature', temps)))
+                    elif node_id in tc_id_map:
+                        temps = CanOpen.parse_temp_tpdo(msg)
+                        data = CanData(node_id=node_id, temperature=temps)
+                        print(f"Node {node_id}: Temperature {temps}")
+                        asyncio.run_coroutine_threadsafe(safe_put(data), loop)
 
-                elif node_id == fourtwenty_id:
-                    signal_data = CanOpen.parse_i_tpdo(msg)
-                    print(f"Node {node_id}: {signal_data}")
-                    if queue:
-                        asyncio.create_task(queue.put((node_id, '4-20mA', signal_data)))
+                    elif node_id == fourtwenty_id:
+                        current = CanOpen.parse_i_tpdo(msg)
+                        data = CanData(node_id=node_id, current_4_20mA=current)
+                        print(f"Node {node_id}: 4-20mA {current}")
+                        asyncio.run_coroutine_threadsafe(safe_put(data), loop)
 
-        return can.Notifier(bus, [_AsyncListener()], loop=asyncio.get_running_loop())
+                except Exception as e:
+                    print(f"[Listener Error] {e}")
 
-    
+        return can.Notifier(bus, [_AsyncListener()], loop=loop)
+        
     @staticmethod
     async def send_can_message(can_bus: can.Bus, can_id: int, data: List[int]):
         """nonblocking can_sender (hopefully)
