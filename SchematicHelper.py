@@ -9,16 +9,16 @@ import pyqtgraph as pg
 
 from app_stylesheets import Stylesheets
 
-from PyQt6.QtCore import (
+from PySide6.QtCore import (
     Qt,
     QPointF,
     QRectF,
     QLineF,
-    pyqtSignal,
+    Signal,
     QTimer
 )
 
-from PyQt6.QtGui import (
+from PySide6.QtGui import (
     QPolygonF,
     QFont,
     QColor,
@@ -26,7 +26,7 @@ from PyQt6.QtGui import (
     QPainterPath # Added QPainterPath here
 )
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QApplication,
     QWidget,
     QVBoxLayout, QHBoxLayout,
@@ -40,8 +40,8 @@ from PyQt6.QtWidgets import (
     QDialog
 )
 
-from PyQt6.QtWidgets import QPushButton, QGraphicsProxyWidget, QGraphicsScene, QGraphicsTextItem
-import pyqtgraph as pg  # import after PyQt6 so pyqtgraph uses PyQt6 internally
+from PySide6.QtWidgets import QPushButton, QGraphicsProxyWidget, QGraphicsScene, QGraphicsTextItem
+import pyqtgraph as pg  # import after PySide6 so pyqtgraph uses PySide6 internally
 from collections import deque
 
 class SchematicHelperFunctions:
@@ -307,8 +307,8 @@ class CreatePlotLabel():
 
 class CreatePlotWindow(QDialog):
 
-    update_plot_signal = pyqtSignal(list)
-    update_label_signal = pyqtSignal(float)
+    update_plot_signal = Signal(list)
+    update_label_signal = Signal(float)
 
     def __init__(self, label_func, title="Sample Plot", poll_rate=1, parent=None):
         super().__init__(parent)

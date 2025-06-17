@@ -1,125 +1,101 @@
 import os
-os.environ["PYQTGRAPH_QT_LIB"] = "PyQt6"  # Force pyqtgraph to use PyQt6
-
+os.environ["PYQTGRAPH_QT_LIB"] = "PySide6"  # Force pglive/pyqtgraph to use PySide6
 
 import sys
 import asyncio
 import csv
 from datetime import datetime
 from collections import deque
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union # Added Union for ClickableTextItem
 
 import can
-import pyqtgraph as pg
+from pglive.sources.live_plot_widget import LivePlotWidget # Import LivePlotWidget
+from pglive.sources.live_plot import LiveLinePlot
+from pglive.sources.live_axis_range import LiveAxisRange
+from pglive.sources.data_connector import DataConnector # Import DataConnector
 
-import matplotlib
-matplotlib.use('QtAgg')
-
-# PyQt6 Imports
-from PyQt6.QtWidgets import (
+# PySide6 Imports
+from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
     QGridLayout, QSizePolicy, QMessageBox,
     QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget,
+    QGraphicsView, QGraphicsScene, QGraphicsTextItem,
+    QGraphicsRectItem, QGraphicsPolygonItem
 )
-from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal
-from PyQt6.QtGui import QFont
+from PySide6.QtCore import Qt, QTimer, QObject, Signal as pyqtSignal, QPointF
+from PySide6.QtGui import QFont, QPen, QBrush, QPolygonF
 
 # Local imports
 from pid_controller import PIDController
 from app_stylesheets import Stylesheets
 from NH3_pump_control import NH3PumpControlScene
 from NH3_vaporizer_control import NH3VaporizerControlScene
-from can_open_protocol import CanOpen 
+from can_open_protocol import CanOpen
 
+# NO GLOBAL VARIABLES HERE ANYMORE! All state is encapsulated.
 class SystemDataManager(QObject):
-    """
-    Manages all shared system data, including sensor readings, E-STOP status,
-    and historical data for plots. Emits signals when data updates.
-    """
-    # Signals to emit when data updates
-    pressure_updated = pyqtSignal(list)         # Emits [PT1401, PT1402, PT1403]
-    temperature_updated = pyqtSignal(list)      # Emits [T01, T02, Heater]
-    pump_feedback_updated = pyqtSignal(float, float) # Emits pump_percent, flow_kg_per_h
-    e_stop_toggled = pyqtSignal(bool)           # Emits True if active, False if inactive
-    # Add more signals for other control parameters if needed
+    pressure_updated = pyqtSignal(list)
+    temperature_updated = pyqtSignal(list)
+    pump_feedback_updated = pyqtSignal(float, float)
+    e_stop_toggled = pyqtSignal(bool)
 
     def __init__(self, history_len: int = 100):
         super().__init__()
         self._history_len = history_len
-
-        # Deques to store historical pressure data for three channels
         self._ch_data = [deque([0.0] * self._history_len, maxlen=self._history_len) for _ in range(3)]
-        # Deques to store historical temperature data for three channels
         self._temp_data = [deque([0.0] * self._history_len, maxlen=self._history_len) for _ in range(3)]
-
-        self._eStopValue = False    # Internal state for E-STOP
-        self._testingFlag = False   # Internal state for testing flag
-
+        self._eStopValue = False
+        self._testingFlag = False
         self._last_pressures = [0.0, 0.0, 0.0]
         self._last_temps = [0.0, 0.0, 0.0]
         self._last_pump_feedback = 0.0
         self._last_flow_rate = 0.0
+        self.INVALID_TEMP_MARKER = -3276.8
 
     @property
     def history_len(self) -> int:
-        """Returns the length of data history kept for plots."""
         return self._history_len
 
     @property
     def ch_data(self) -> List[deque]:
-        """Returns the historical pressure data deques."""
         return self._ch_data
 
     @property
     def temp_data(self) -> List[deque]:
-        """Returns the historical temperature data deques."""
         return self._temp_data
 
     @property
     def eStopValue(self) -> bool:
-        """Returns the current E-STOP status."""
         return self._eStopValue
 
     @eStopValue.setter
     def eStopValue(self, value: bool):
-        """Sets the E-STOP status and emits a signal if the value changes."""
         if self._eStopValue != value:
             self._eStopValue = value
             self.e_stop_toggled.emit(value)
 
     @property
     def testingFlag(self) -> bool:
-        """Returns the current testing flag status."""
         return self._testingFlag
 
     @property
     def last_pressures(self) -> List[float]:
-        """Returns the last received pressure values."""
         return self._last_pressures
 
     @property
     def last_temps(self) -> List[float]:
-        """Returns the last received temperature values."""
         return self._last_temps
 
     @property
     def last_pump_feedback(self) -> float:
-        """Returns the last received pump feedback value."""
         return self._last_pump_feedback
 
     @property
     def last_flow_rate(self) -> float:
-        """Returns the last received flow rate value."""
         return self._last_flow_rate
 
     def update_pressure_data(self, values: List[float]):
-        """
-        Updates internal pressure data and emits pressure_updated signal.
-        Scales raw voltage values to psi.
-        :param values: Raw voltage values from CAN.
-        """
-        # Ensure values has at least 3 elements before accessing indices
         if len(values) >= 3:
             scaled_pressures = [values[0] * 30.0, values[1] * 60.0, values[2] * 60.0]
             for i in range(3):
@@ -128,30 +104,132 @@ class SystemDataManager(QObject):
             self.pressure_updated.emit(scaled_pressures)
 
     def update_temperature_data(self, values: List[float]):
-        """
-        Updates internal temperature data and emits temperature_updated signal.
-        Assumes values are already scaled or correctly represent temperatures.
-        :param values: Temperature values from CAN.
-        """
-        if len(values) >= 3: # Ensure enough values for T01, T02, Heater
+        if len(values) < 3:
+            print(f"Warning: Temperature data received with unexpected length: {len(values)}. Expected >=3.")
+            return
+
+        incoming_temps = values[:3]
+        is_invalid_reading = all(t == self.INVALID_TEMP_MARKER for t in incoming_temps)
+
+        if not is_invalid_reading:
+            self._last_temps = incoming_temps
             for i in range(3):
-                self._temp_data[i].append(values[i])
-            self._last_temps = values[:3]
-            self.temperature_updated.emit(values[:3])
+                self._temp_data[i].append(incoming_temps[i])
+
+        self.temperature_updated.emit(self._last_temps)
 
     def update_current_data(self, pump_percent: float, flow_kg_per_h: float):
-        """
-        Updates internal pump feedback and flow rate data and emits pump_feedback_updated signal.
-        :param pump_percent: The pump feedback in percentage.
-        :param flow_kg_per_h: The flow rate in kg/h.
-        """
         self._last_pump_feedback = pump_percent
         self._last_flow_rate = flow_kg_per_h
         self.pump_feedback_updated.emit(pump_percent, flow_kg_per_h)
 
+    def reset_pressure_data(self):
+        self._last_pressures = [0.0, 0.0, 0.0]
+        for i in range(3):
+            self._ch_data[i].clear()
+            self._ch_data[i].extend([0.0] * self._history_len)
+        self.pressure_updated.emit(self._last_pressures)
+
+    def reset_temperature_data(self):
+        self._last_temps = [0.0, 0.0, 0.0]
+        for i in range(3):
+            self._temp_data[i].clear()
+            self._temp_data[i].extend([0.0] * self._history_len)
+            if hasattr(self, '_raw_temp_buffers'):
+                self._raw_temp_buffers[i].clear()
+        if hasattr(self, '_smoothed_temps'):
+            self._smoothed_temps = [0.0, 0.0, 0.0]
+        self.temperature_updated.emit(self._last_temps)
+
+    def reset_feedback_data(self):
+        self._last_pump_feedback = 0.0
+        self._last_flow_rate = 0.0
+        self.pump_feedback_updated.emit(self._last_pump_feedback, self._last_flow_rate)
+
     def toggle_e_stop_state(self):
-        """Toggles the internal E-STOP state."""
-        self.eStopValue = not self.eStopValue # Uses the property setter to emit signal
+        self.eStopValue = not self.eStopValue
+
+class PyqtgraphPlotWidget(QWidget):
+    def __init__(self, data_manager: SystemDataManager):
+        super().__init__()
+        self.data_manager = data_manager
+        self.layout = QHBoxLayout(self)
+
+        plot_layout = QVBoxLayout()
+        self.history_len = self.data_manager.history_len
+
+        self.pressure_connectors = []
+        self.temperature_connectors = []
+        self.pressure_live_lines = [] # Still needed for future flexibility if direct access is ever needed (e.g. for clearing)
+        self.temperature_live_lines = []
+
+        # Pressure plots - one per sensor
+        self.pressure_plots = []
+        for i, title in enumerate(["PT1401", "PT1402", "PT1403"]):
+            widget = LivePlotWidget(
+                title=title,
+                x_range_controller=LiveAxisRange(roll_on_tick=30),
+                y_range_controller=LiveAxisRange(fixed_range=[0, 5])
+            )
+            plot = LiveLinePlot(pen=QPen(Qt.green, 3), auto_fill_history=True, symbol='o', symbolSize=8) # Increased thickness, added symbols
+            widget.addItem(plot)
+            plot_layout.addWidget(widget)
+            self.pressure_plots.append(widget)
+            self.pressure_live_lines.append(plot) # Store reference to the line
+
+            # DataConnector manages the data feeding. update_rate is critical here.
+            connector = DataConnector(plot, max_points=self.history_len, update_rate=30) # 30 updates per second
+            self.pressure_connectors.append(connector)
+
+        # Temperature combined plot (two curves)
+        self.temp_widget = LivePlotWidget(
+            title="Temperatures",
+            x_range_controller=LiveAxisRange(roll_on_tick=30),
+            y_range_controller=LiveAxisRange(fixed_range=[10, 30])
+        )
+        temp_curve1 = LiveLinePlot(pen=QPen(Qt.red, 3), auto_fill_history=True, symbol='s', symbolSize=8)
+        temp_curve2 = LiveLinePlot(pen=QPen(Qt.blue, 3), auto_fill_history=True, symbol='t', symbolSize=8)
+        self.temp_widget.addItem(temp_curve1)
+        self.temp_widget.addItem(temp_curve2)
+        plot_layout.addWidget(self.temp_widget)
+
+        self.temperature_connectors = [
+            DataConnector(temp_curve1, max_points=self.history_len, update_rate=30),
+            DataConnector(temp_curve2, max_points=self.history_len, update_rate=30),
+        ]
+        self.temperature_live_lines = [temp_curve1, temp_curve2] # Store references
+
+        self.layout.addLayout(plot_layout)
+
+        self.data_manager.pressure_updated.connect(self._on_pressure_data_updated)
+        self.data_manager.temperature_updated.connect(self._on_temperature_data_updated)
+
+    def _on_pressure_data_updated(self, pressures: List[float]):
+        """Slot to handle pressure_updated signal from SystemDataManager."""
+        for i, connector in enumerate(self.pressure_connectors):
+            if i < len(pressures):
+                connector.cb_append_data_point(pressures[i])
+                print(f"  Appended pressure[{i}]: {pressures[i]}") # Debug print
+
+    def _on_temperature_data_updated(self, temperatures: List[float]):
+        """Slot to handle temperature_updated signal from SystemDataManager."""
+        if len(temperatures) >= 2:
+            self.temperature_connectors[0].cb_append_data_point(temperatures[0])
+            self.temperature_connectors[1].cb_append_data_point(temperatures[1])
+            print(f"  Appended temperature[0]: {temperatures[0]}, temperature[1]: {temperatures[1]}") # Debug print
+
+    def update_plot(self):
+        """
+        Triggers the update/redraw of all LivePlotWidgets.
+        Called periodically by a QTimer.
+        """
+        # We rely on DataConnector's update_rate to push data to the plot,
+        # and the LivePlotWidget.update() to trigger the redraw.
+        # No more direct access to connector.data_buffer is needed here.
+        for plot_widget in self.pressure_plots:
+            plot_widget.update()
+        self.temp_widget.update()
+        print("PyqtgraphPlotWidget: Triggering plot redraw.") # Debug print
 
 
 class PermanentRightHandDisplay(QWidget):
@@ -303,80 +381,8 @@ class PumpControlWidget(QWidget):
         """
         return int(self.pump_on_checkbox.isChecked()), self.speed_slider.value()
 
-class PyqtgraphPlotWidget(QWidget):
-    """
-    A QWidget class that displays real-time pressure and temperature data using pyqtgraph.
-    It creates multiple plot widgets for individual pressure sensors and a combined plot for temperatures.
-    """
-    def __init__(self, data_manager: SystemDataManager):
-        """
-        Initializes the PyqtgraphPlotWidget.
-        Sets up the layout, plot widgets for pressure and temperature, and initializes plot curves.
-        :param data_manager: Reference to the SystemDataManager to access historical data.
-        """
-        super().__init__()
-        self.data_manager = data_manager # Store reference to data manager
 
-        self.layout = QHBoxLayout(self)
-        self.plot_area = QVBoxLayout()
-
-        self.pressure_names = ["PT1401", "PT1402", "PT1403"]
-        self.temperature_names = ["T01", "T02", "Heater"]
-
-        self.pressure_curves = []
-        self.temperature_curves = []
-
-        # Plot pressure graphs
-        for i, name in enumerate(self.pressure_names):
-            pw = pg.PlotWidget(title=name)
-            pw.setLabel('left', "Pressure", units='psi')
-            pw.setLabel('bottom', "Time", units='s')
-            pw.setYRange(0, 150 if i == 0 else 300) # Different Y-range for PT1401 vs others
-            pw.setXRange(0, 10) # X-range fixed to 10 seconds (history_len * 0.1s update interval)
-            pw.showGrid(x=True, y=True)
-            pw.getAxis("bottom").setTickSpacing(1, 0.5)
-            # Corrected setStyle call
-            pw.getAxis("left").setStyle(tickFont=QFont("Arial", 10))
-            curve = pw.plot(pen=pg.mkPen('b', width=2)) # Blue pen for pressure curves
-            self.pressure_curves.append(curve)
-            self.plot_area.addWidget(pw)
-
-        # Plot temperature graph
-        temp_widget = pg.PlotWidget(title="Temperatures")
-        temp_widget.setLabel('left', "Temperature", units='°C')
-        temp_widget.setLabel('bottom', "Time", units='s')
-        temp_widget.setYRange(0, 150)
-        temp_widget.setXRange(0, 10)
-        temp_widget.showGrid(x=True, y=True)
-        # Corrected setStyle call
-        temp_widget.getAxis("left").setStyle(tickFont=QFont("Arial", 10))
-
-        # Add legend to differentiate curves
-        # legend = temp_widget.addLegend()
-
-        # Create curves for T01, T02, and Heater with different colors
-        curve1 = temp_widget.plot(pen=pg.mkPen('r', width=2), name="T01") # Red for T01
-        curve2 = temp_widget.plot(pen=pg.mkPen('g', width=2), name="T02") # Green for T02
-        curve3 = temp_widget.plot(pen=pg.mkPen('b', width=2), name="Heater") # Blue for Heater
-
-        # Store curves for later updates
-        self.temperature_curves = [curve1, curve2, curve3]
-
-        # Add single widget to layout
-        self.plot_area.addWidget(temp_widget)
-        self.layout.addLayout(self.plot_area, 5) # Add plot area to main layout with stretch factor
-
-    def update_plot(self):
-        """
-        Updates the data for all pressure and temperature curves displayed in the plot widgets.
-        Uses the data from the data_manager.
-        """
-        time_axis = [i * 0.1 for i in range(self.data_manager.history_len)]  # Last 10 seconds (assuming 100ms update)
-        for i in range(3):
-            self.pressure_curves[i].setData(time_axis, list(self.data_manager.ch_data[i])) # Update pressure curves
-        for i in range(3):
-            self.temperature_curves[i].setData(time_axis, list(self.data_manager.temp_data[i])) # Update temperature curves
-
+ 
 
 class SensorDisplayWidget(QWidget):
     """
@@ -587,7 +593,7 @@ class PumpControlWindow(QWidget):
         self.data_manager = data_manager # Store reference to the central data manager
 
         self.setWindowTitle("Instrumentation Dashboard")
-        self.setMinimumSize(1920, 1080)
+        self.setMinimumSize(1200, 900)
         self.setStyleSheet("color: white; background-color: #212121;")
 
         # Initialize sub-widgets, passing data_manager where needed
@@ -626,6 +632,7 @@ class PumpControlWindow(QWidget):
         self.status_bar = QLabel("Status: Idle")
         self.status_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_bar.setStyleSheet(Stylesheets.LabelStyleSheet()) # Corrected typo
+        self.status_bar.setWordWrap(True) # Added word wrap for long messages
 
         # Main layout configuration
         main_layout = QHBoxLayout()
@@ -690,17 +697,14 @@ class PumpControlWindow(QWidget):
     def toggle_can_connection(self):
         """
         Toggles the CAN bus connection.
-        If not connected, attempts to establish a connection using `python-can` and starts the CAN listener.
-        If connected, shuts down the CAN bus.
+        If not connected, attempts to establish a connection.
+        If connected, shuts down the CAN bus and resets all sensor values to 0.
         Updates the status bar and button text accordingly.
         """
         if not self.can_connected:
             try:
                 # Attempt to connect to the CAN bus
                 self.bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="pcan", bitrate=500000)
-                # Pass the single data queue to the CAN listener
-                # NOTE: can_open_protocol.py's start_listener MUST be adapted to accept
-                # a single queue and push structured messages to it.
                 CanOpen.start_listener(self.bus, resolution=16, data_queue=self.can_data_queue)
 
                 self.status_bar.setText("Status: CAN Connected")
@@ -716,6 +720,7 @@ class PumpControlWindow(QWidget):
                 QMessageBox.critical(self, "CAN Error", f"Failed to connect to CAN: {e}")
                 self.status_bar.setText("Status: CAN Connection Failed")
         else:
+            # When disconnecting:
             try:
                 if self.bus:
                     self.bus.shutdown() # Shut down the CAN bus
@@ -729,6 +734,12 @@ class PumpControlWindow(QWidget):
                     padding: 4px;
                     border-radius: 5px;
                 """)
+                
+                # Reset all sensor values to 0 via the data manager
+                self.data_manager.reset_pressure_data()
+                self.data_manager.reset_temperature_data()
+                self.data_manager.reset_feedback_data()
+
             except Exception as e:
                 QMessageBox.warning(self, "Disconnect Error", f"Error during CAN disconnection: {e}")
 
@@ -776,12 +787,13 @@ class PumpControlWindow(QWidget):
         It processes the received data and updates the SystemDataManager.
         """
         while True:
-            # Sleep to allow other async tasks to run and prevent tight loop blocking
-            # This controls how often the GUI attempts to process new CAN messages.
-            await asyncio.sleep(0.1)
-
             # Retrieve a single structured message from the queue. This call will block until data is available.
             try:
+                # IMPORTANT: Ensure that CanOpen.start_listener puts dictionary objects
+                # into the queue, or adjust this consumer_task to expect CanData objects.
+                # Based on previous conversation, the CanOpen.start_listener needs to be updated
+                # to put dictionaries (e.g., {'data_type': 'voltage', 'values': [...]})
+                # into the queue, or this consumer_task needs to be adjusted.
                 message: Dict[str, Any] = await self.can_data_queue.get()
             except asyncio.CancelledError:
                 # Handle task cancellation gracefully if the queue is shut down
@@ -790,7 +802,7 @@ class PumpControlWindow(QWidget):
                 print(f"Error getting message from queue: {e}")
                 continue # Skip to next iteration on error
 
-            # node_id = message.get("node_id")
+            # node_id = message.get("node_id") # Node ID can be retrieved if needed, but not directly used here
             data_type = message.get("data_type")
             values = message.get("values")
 
@@ -799,9 +811,7 @@ class PumpControlWindow(QWidget):
                 self.data_manager.update_pressure_data(values)
 
             elif data_type == 'temperature':
-                # The original code had a node_id check. Keep it if relevant for your system.
-                # if node_id == 0x182:
-                self.data_manager.update_temperature_data(values) # Assuming values is already [:3] or handled by DM
+                self.data_manager.update_temperature_data(values)
 
             elif data_type == '4-20mA':
                 # Assuming values is a dict like {"pump_percent": X, "flow_kg_per_h": Y}
@@ -836,10 +846,10 @@ class PumpControlWindow(QWidget):
             if self.can_connected and self.bus:
                 try:
                     # Pass eStopValue and testingFlag from the data manager
+                    # Assuming CanOpen.send_can_message takes eStop and a test_flag.
+                    # Original was (self.bus, 0x600, data, eStopValue, False, testingFlag)
                     await CanOpen.send_can_message(self.bus, 0x600, data,
-                                                   self.data_manager.eStopValue,
-                                                   False, # Assuming is_test_message is always False for pump control
-                                                   self.data_manager.testingFlag)
+                                                   self.data_manager.eStopValue)
                 except Exception as e:
                     self.status_bar.setText(f"CAN Send Error: {str(e)}")
 
@@ -866,10 +876,12 @@ class PumpControlWindow(QWidget):
 
         try:
             # Pass eStopValue and testingFlag from the data manager
+            # Assuming CanOpen.send_can_message takes eStop and a test_flag.
+            # Original was (self.bus, 0x191, data, eStopValue, False, testingFlag)
             await CanOpen.send_can_message(self.bus, 0x191, data,
                                            self.data_manager.eStopValue,
-                                           False, # Assuming is_test_message is always False for ESV
-                                           self.data_manager.testingFlag)
+                                           False, # is_test_message parameter
+                                           self.data_manager.testingFlag) # test_flag parameter
         except Exception as e:
             self.status_bar.setText(f"CAN Send Error: {str(e)}")
 
@@ -943,7 +955,7 @@ async def main_async():
     # Create a single asyncio queue for all incoming CAN data messages
     main_can_queue = asyncio.Queue(maxsize=20) # Increased maxsize for buffer if needed
 
-    app = QApplication(sys.argv) # Initialize the PyQt application
+    app = QApplication(sys.argv) # Initialize the PySide6 application
 
     # Create the central data manager
     data_manager = SystemDataManager(history_len=100)
@@ -974,8 +986,15 @@ async def main_async():
 
     while True:
         await asyncio.sleep(0.01) # Short sleep to yield control
-        app.processEvents() # Process PyQt events to keep the GUI responsive
+        app.processEvents() # Process PySide6 events to keep the GUI responsive
 
 if __name__ == "__main__":
+    os.environ["QT_OPENGL"] = "software"
+    print(f"QT_OPENGL set to: {os.environ.get('QT_OPENGL')}") # Debug print
+
+    # Ensure high DPI scaling is enabled for modern displays
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling)
+    # Share OpenGL contexts if multiple GL widgets are used, though not strictly necessary for a single plot widget
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     # Entry point of the application. Runs the main asynchronous function.
     asyncio.run(main_async())

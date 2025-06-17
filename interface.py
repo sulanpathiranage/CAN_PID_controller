@@ -475,7 +475,7 @@ class PumpControlWindow(QWidget):
         self.timer.start(100)
 
         asyncio.create_task(self.consumer_task())
-        asyncio.create_task(self.pump_sender_task())
+        asyncio.create_task(self.producer_task())
 
 
     def toggle_can_connection(self):
@@ -483,7 +483,7 @@ class PumpControlWindow(QWidget):
             try:
                 self.bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="pcan", bitrate=500000)
                 CanOpen.start_listener(self.bus, resolution=16, queue_List=self.queue_List)
-                asyncio.create_task(self.pump_sender_task())
+                asyncio.create_task(self.producer_task())
 
                 self.status_bar.setText("Status: CAN Connected")
                 self.status_bar.setStyleSheet("""
@@ -649,7 +649,7 @@ class PumpControlWindow(QWidget):
             self.queue_List[1].task_done()
             self.queue_List[2].task_done()
 
-    async def pump_sender_task(self):
+    async def producer_task(self):
         while True:
             pump_on, manual_speed = self.pump_control.get_state()
             measured_pressure = self.last_pressures[0] if hasattr(self, 'last_pressures') else 0.0
@@ -661,10 +661,10 @@ class PumpControlWindow(QWidget):
 
             if self.can_connected and self.bus:
                 try:
-                    await CanOpen.send_can_message(self.bus, 0x600, data, eStopValue, False, testingFlag)
+                    await CanOpen.send_can_message(self.bus, 0x600, data, False)
                 except Exception as e:
                     self.status_bar.setText(f"CAN Send Error: {str(e)}")
-                await CanOpen.send_can_message(self.bus, 0x600, data, eStopValue, False, testingFlag)
+                await CanOpen.send_can_message(self.bus, 0x600, data, False)
 
             if self.logging:
                 timestamp = datetime.now().isoformat()

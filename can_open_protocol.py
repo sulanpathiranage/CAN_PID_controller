@@ -298,8 +298,8 @@ class CanOpen:
 
     
     @staticmethod
-    async def send_can_message(can_bus: can.Bus, can_id: int, data: List[int], eStopFlag, esv_n2_flag, testing_flag):
-        """nonblocking can_sender (hopefully)
+    async def send_can_message(can_bus: can.Bus, can_id: int, data: List[int], eStopFlag):
+        """nonblocking can_sender 
 
         Args:
             can_bus (can.Bus): can bus
@@ -309,29 +309,20 @@ class CanOpen:
         Raises:
             ValueError: exception error
         """
-        if testing_flag:
-            msg = can.Message(arbitration_id=0x181,
-                            data=[0x05, 0x01, 0x7A, 0x00, 0x32, 0x01, 0x00, 0x00],
-                            is_extended_id=False)
-            
-            print("Sending CAN message over virtual bus")
-
-            can_bus.send(msg)
-        else :
         
-            if (eStopFlag) :
-                msg = can.Message(arbitration_id=can_id, data=0x000000000, is_extended_id=False)
-                #print("PUMP WAS E-STOPPED")
-            else:
-                if len(data) > 8:
-                    raise ValueError("CAN data cannot exceed 8 bytes")
-                msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=False)
+        if (eStopFlag) :
+            msg = can.Message(arbitration_id=can_id, data=[0x00]*8, is_extended_id=False)
+            #print("PUMP WAS E-STOPPED")
+        else:
+            if len(data) > 8:
+                raise ValueError("CAN data cannot exceed 8 bytes")
+            msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=False)
 
-                try:
-                    can_bus.send(msg)
-                    #print(f"[SEND] Sent CAN message: COB-ID=0x{can_id:X}, Data={data}")
-                except can.CanError as e:
-                    print(f"[ERROR] Failed to send CAN message: {e}")
+            try:
+                can_bus.send(msg)
+                #print(f"[SEND] Sent CAN message: COB-ID=0x{can_id:X}, Data={data}")
+            except can.CanError as e:
+                print(f"[ERROR] Failed to send CAN message: {e}")
 
         
 
