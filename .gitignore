@@ -7,3 +7,14 @@ __pycache__/
 
 build/
 dist/
+pyside6_test.py
+dist/interface.exe
+build/interface/xref-interface.html
+build/interface/warn-interface.txt
+build/interface/PYZ-00.toc
+build/interface/PYZ-00.pyz
+build/interface/PKG-00.toc
+build/interface/interface.pkg
+build/interface/EXE-00.toc
+build/interface/base_library.zip
+build/interface/Analysis-00.toc
