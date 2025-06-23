@@ -1,29 +1,31 @@
 import sys
 import can
-import time 
+import time
 import asyncio
 from typing import List
 from can_open_protocol import CanOpen, CanData
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-    QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox, 
+    QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
     QFormLayout, QGridLayout, QSizePolicy, QMessageBox,
     QPushButton, QDoubleSpinBox
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QTime
 from PySide6.QtGui import QFont
-import matplotlib
-matplotlib.use('QtAgg')
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-import matplotlib.pyplot as plt
 from collections import deque
 import csv
 from datetime import datetime
 from pid_controller import PIDController
 import pyqtgraph as pg
 
-history_len = 100
-ch_data = [deque([0.0] * history_len, maxlen=history_len) for _ in range(3)]
+from pglive.kwargs import Axis
+from pglive.sources.live_plot_widget import LivePlotWidget
+from pglive.sources.live_plot import LiveLinePlot
+from pglive.sources.data_connector import DataConnector
+from pglive.sources.live_axis_range import LiveAxisRange
+
+
+history_len = 300  # example buffer length
 
 class PumpControlWidget(QWidget):
     def __init__(self):
@@ -83,75 +85,71 @@ class PumpControlWidget(QWidget):
 
     def get_state(self):
         return int(self.pump_on_checkbox.isChecked()), self.speed_slider.value()
-    
-
 
 class PyqtgraphPlotWidget(QWidget):
     def __init__(self):
         super().__init__()
-
         self.layout = QHBoxLayout(self)
-        self.plot_area = QVBoxLayout()
-        self.label_area = QVBoxLayout()
 
-        self.pressure_names = ["PT1401", "PT1402", "PT1403"]
-        self.temperature_names = ["T01", "T02"]
-        self.last_temps = [None, None]
+        plot_layout = QVBoxLayout()
 
-        self.pressure_curves = []
-        self.temperature_curves = []
-
-        # Plot pressure graphs
-        for i, name in enumerate(self.pressure_names):
-            pw = pg.PlotWidget(title=name)
-            pw.setLabel('left', "Pressure", units='psi')
-            pw.setLabel('bottom', "Time", units='s')
-            pw.setYRange(0, 150 if i == 0 else 300)
-            pw.setXRange(0, 10)
-            pw.showGrid(x=True, y=True)
-            pw.getAxis("bottom").setTickSpacing(1, 0.5)
-            pw.getAxis("left").setStyle(tickFont=pg.Qt.QtGui.QFont("Arial", 10))
-            curve = pw.plot(pen=pg.mkPen('b', width=2))
-            self.pressure_curves.append(curve)
-            self.plot_area.addWidget(pw)
-
-        # Plot temperature graph
-        temp_widget = pg.PlotWidget(title="Temperatures")
-        temp_widget.setLabel('left', "Temperature", units='°C')
-        temp_widget.setLabel('bottom', "Time", units='s')
-        temp_widget.setYRange(0, 150)
-        temp_widget.setXRange(0, 10)
-        temp_widget.showGrid(x=True, y=True)
-        temp_widget.getAxis("left").setStyle(tickFont=pg.Qt.QtGui.QFont("Arial", 10))
-
-        # Add legend to differentiate curves
-        legend = temp_widget.addLegend()
-
-        # Create curves for T01 and T02 with different colors
-        curve1 = temp_widget.plot(pen=pg.mkPen('r', width=2), name="T01")
-        curve2 = temp_widget.plot(pen=pg.mkPen('g', width=2), name="T02")
-
-        # Store curves for later updates
-        self.temperature_curves = [curve1, curve2]
-
-        # Add single widget to layout
-        self.plot_area.addWidget(temp_widget)
+        # Initialize data storage attributes for plotting
+        self.pressure_data_buffers = [deque([0.0]*history_len, maxlen=history_len) for _ in range(3)]
+        self.temperature_data_buffers = [deque([0.0]*history_len, maxlen=history_len) for _ in range(2)]
+        # Store data connectors to push data later
+        self.pressure_connectors = []
+        self.temperature_connectors = []
 
 
+        # Pressure plots - one per sensor
+        self.pressure_plots = []
+        for i, title in enumerate(["PT1401", "PT1402", "PT1403"]):
+            widget = LivePlotWidget(
+                title=title,
+                x_range_controller=LiveAxisRange(roll_on_tick=30),
+                y_range_controller=LiveAxisRange(fixed_range=[0, 100])  # adjust range as needed
+            )
+            plot = LiveLinePlot(pen='g')
+            widget.addItem(plot)
+            plot_layout.addWidget(widget)
+            self.pressure_plots.append(widget)
 
-        self.layout.addLayout(self.plot_area, 5)
+            # DataConnector manages the data feeding
+            connector = DataConnector(plot, max_points=history_len, update_rate=30)
+            self.pressure_connectors.append(connector)
+
+        # Temperature combined plot (two curves)
+        temp_widget = LivePlotWidget(
+            title="Temperatures",
+            x_range_controller=LiveAxisRange(roll_on_tick=30),
+            y_range_controller=LiveAxisRange(fixed_range=[-20, 120])  # example range for temp
+        )
+        temp_curve1 = LiveLinePlot(pen='r')
+        temp_curve2 = LiveLinePlot(pen='g')
+        temp_widget.addItem(temp_curve1)
+        temp_widget.addItem(temp_curve2)
+        plot_layout.addWidget(temp_widget)
+
+        self.temperature_connectors = [
+            DataConnector(temp_curve1, max_points=history_len, update_rate=30),
+            DataConnector(temp_curve2, max_points=history_len, update_rate=30),
+        ]
+
+        self.layout.addLayout(plot_layout)
 
     def update_plot(self):
-        time_axis = [i * 0.1 for i in range(history_len)]  # Last 10 seconds
-        for i in range(3):
-            self.pressure_curves[i].setData(time_axis, list(ch_data[i]))
-        if hasattr(self, 'temperature_data'):
-            for i in range(2):
-                self.temperature_curves[i].setData(time_axis, list(self.temperature_data[i]))
+        # This method is called by a QTimer to update the plots.
+        # It takes the latest value from the internal data buffers and pushes it to the connectors.
 
+        # Append new pressure data points
+        for i, connector in enumerate(self.pressure_connectors):
+            if i < len(self.pressure_data_buffers):
+                connector.cb_append_data_point(self.pressure_data_buffers[i][-1]) # Use cb_append_data_point for single point
 
-
-
+        # Append new temperature data points if available
+        for i, connector in enumerate(self.temperature_connectors):
+            if i < len(self.temperature_data_buffers):
+                connector.cb_append_data_point(self.temperature_data_buffers[i][-1]) # Use cb_append_data_point for single point
 
 class SensorDisplayWidget(QWidget):
     def __init__(self):
@@ -225,7 +223,7 @@ class PIDControlWidget(QWidget):
         self.output_label = QLabel("PID Output: -- %")
         self.output_label.setStyleSheet("font-size: 14px;")
         layout.addWidget(QLabel("PID Controller"))
-                
+
         layout.addWidget(self.output_label)
 
         self.kp_input = QDoubleSpinBox(); self.kp_input.setValue(1.0)
@@ -275,7 +273,7 @@ class PIDControlWidget(QWidget):
             self.output_label.setText("PID Output: -- %")
             return None
 
-    
+
 class MainWindow(QWidget):
     def __init__(self, bus, queue):
         super().__init__()
@@ -309,12 +307,12 @@ class MainWindow(QWidget):
             """)
 
         self.setWindowTitle("Instrumentation Dashboard")
-        self.setMinimumSize(1200, 800)        
+        self.setMinimumSize(1200, 800)
         self.bus = bus
         self.queue = queue
 
         self.pump_control = PumpControlWidget()
-        self.plot_canvas = PyqtgraphPlotWidget()
+        self.plot_canvas = PyqtgraphPlotWidget() # This is the instance where data buffers live
         self.sensor_display = SensorDisplayWidget()
         self.pid_control = PIDControlWidget()
 
@@ -324,7 +322,6 @@ class MainWindow(QWidget):
         self.csv_writer = None
         self.can_connected = False
 
- 
 
         self.log_filename_entry = QLineEdit()
         self.log_filename_entry.setPlaceholderText("Enter log filename...")
@@ -344,7 +341,7 @@ class MainWindow(QWidget):
         side_panel = QVBoxLayout()
         side_panel.addWidget(self.pump_control)
         side_panel.addWidget(self.sensor_display)
-        side_panel.addWidget(log_widget)  
+        side_panel.addWidget(log_widget)
         side_panel.addWidget(self.pid_control)
 
         layout.addLayout(side_panel, 1)
@@ -358,16 +355,15 @@ class MainWindow(QWidget):
         self.connect_button.clicked.connect(self.toggle_can_connection)
         side_panel.addWidget(self.connect_button)
 
- 
-
 
         self.timer = QTimer()
-        self.timer.timeout.connect(self.update_plot)
-        self.timer.start(100)
+        self.timer.timeout.connect(self.update_plot_ui) # Renamed to avoid confusion
+        self.timer.start(100) # Update plot UI every 100ms
 
-        asyncio.create_task(self.consumer_task())
-        asyncio.create_task(self.pump_sender_task())
-        
+        # These tasks are started in main_async, no need to start here again
+        # asyncio.create_task(self.consumer_task())
+        # asyncio.create_task(self.pump_sender_task())
+
         self.last_pressures = [0.0, 0.0, 0.0]
         self.last_temps = [0.0, 0.0]
 
@@ -376,7 +372,8 @@ class MainWindow(QWidget):
             try:
                 self.bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="pcan", bitrate=500000)
                 CanOpen.start_listener(self.bus, resolution=16, queue=self.queue)
-                asyncio.create_task(self.pump_sender_task())
+                # Ensure pump_sender_task is running only if connected
+                # asyncio.create_task(self.pump_sender_task()) # This will be started once in main_async
                 self.status_bar.setText("Status: CAN Connected")
                 self.connect_button.setText("Disconnect CAN")
                 self.can_connected = True
@@ -393,7 +390,6 @@ class MainWindow(QWidget):
                 self.status_bar.setText("Status: CAN Disconnected")
             except Exception as e:
                 QMessageBox.warning(self, "Disconnect Error", f"Error during CAN disconnection: {e}")
-
 
     def toggle_logging(self):
         if not self.logging:
@@ -441,25 +437,27 @@ class MainWindow(QWidget):
                     data.voltage[1] * 60.0,
                     data.voltage[2] * 60.0
                 ]
-                for i in range(3):
-                    ch_data[i].append(scaled_pressures[i])
+                # Append to the deque buffers in plot_canvas directly
+                for i in range(len(scaled_pressures)):
+                    self.plot_canvas.pressure_data_buffers[i].append(scaled_pressures[i])
+
                 self.last_pressures = scaled_pressures
                 self.sensor_display.update_pressures(scaled_pressures)
 
             elif data.temperature is not None:
                 if data.node_id == 0x182:
-                    self.plot_canvas.last_temps = data.temperature[:2]
-                    self.plot_canvas.temperature_data = [
-                        deque([data.temperature[0]] * history_len, maxlen=history_len),
-                        deque([data.temperature[1]] * history_len, maxlen=history_len)
-                    ]
-                    self.sensor_display.update_temperatures(data.temperature[:2])
-                    self.last_temps = data.temperature[:2]
+                    # Append to the deque buffers in plot_canvas directly
+                    if len(data.temperature) >= 2: # Ensure enough temperature data
+                        self.plot_canvas.temperature_data_buffers[0].append(data.temperature[0])
+                        self.plot_canvas.temperature_data_buffers[1].append(data.temperature[1])
+                        self.last_temps = data.temperature[:2]
+                        self.sensor_display.update_temperatures(data.temperature[:2])
 
             elif data.current_4_20mA is not None:
                 self.sensor_display.update_feedback(data.current_4_20mA[0], data.current_4_20mA[1])
 
             self.queue.task_done()
+
 
     async def pump_sender_task(self):
         while True:
@@ -476,11 +474,10 @@ class MainWindow(QWidget):
                     await CanOpen.send_can_message(self.bus, 0x600, data)
                 except Exception as e:
                     self.status_bar.setText(f"CAN Send Error: {str(e)}")
-                await CanOpen.send_can_message(self.bus, 0x600, data)
 
             if self.logging:
                 timestamp = datetime.now().isoformat()
-                rpm = speed * 17.2
+                rpm = speed * 17.2 # Assuming a conversion factor
                 self.csv_writer.writerow([
                     timestamp,
                     *self.last_pressures,
@@ -489,35 +486,37 @@ class MainWindow(QWidget):
                     speed,
                     rpm
                 ])
-                self.log_file.flush()
+                self.log_file.flush() # Ensure data is written to disk
 
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05) # Send pump commands at 20Hz
 
-    def update_plot(self):
+    def update_plot_ui(self): # Renamed this method
         self.plot_canvas.update_plot()
-        
+
     def closeEvent(self, event):
         if self.log_file:
             self.log_file.close()
             self.log_file = None
+        if self.can_connected and self.bus:
+            self.bus.shutdown() # Ensure CAN bus is shut down
         event.accept()
-
-
 
 
 async def main_async():
     queue = asyncio.Queue()
 
     app = QApplication(sys.argv)
-    window = MainWindow(bus=None, queue=queue)  # Don't pass the bus initially
+    window = MainWindow(bus=None, queue=queue)
     window.show()
 
+    # Start the async tasks
     asyncio.create_task(window.consumer_task())
+    asyncio.create_task(window.pump_sender_task())
 
+    # This loop keeps the Qt event loop and asyncio event loop running
     while True:
-        await asyncio.sleep(0.01)
-        app.processEvents()
-
+        await asyncio.sleep(0.01) # Small sleep to yield to other asyncio tasks
+        app.processEvents() # Process Qt events
 
 if __name__ == "__main__":
     asyncio.run(main_async())
