@@ -7,7 +7,7 @@ import csv
 from datetime import datetime
 from collections import deque
 from typing import List, Dict, Any, Union # Added Union for ClickableTextItem
-
+import pyqtgraph as pg
 import can
 from pglive.sources.live_plot_widget import LivePlotWidget # Import LivePlotWidget
 from pglive.sources.live_plot import LiveLinePlot
@@ -33,18 +33,23 @@ from NH3_pump_control import NH3PumpControlScene
 from NH3_vaporizer_control import NH3VaporizerControlScene
 from can_open_protocol import CanOpen
 
-# NO GLOBAL VARIABLES HERE ANYMORE! All state is encapsulated.
 class SystemDataManager(QObject):
     pressure_updated = pyqtSignal(list)
     temperature_updated = pyqtSignal(list)
     pump_feedback_updated = pyqtSignal(float, float)
     e_stop_toggled = pyqtSignal(bool)
 
-    def __init__(self, history_len: int = 100):
+    def __init__(self, history_len: int):
         super().__init__()
         self._history_len = history_len
+
         self._ch_data = [deque([0.0] * self._history_len, maxlen=self._history_len) for _ in range(3)]
         self._temp_data = [deque([0.0] * self._history_len, maxlen=self._history_len) for _ in range(3)]
+        # New deque for pump feedback percentage
+        self._pump_feedback_percent_data = deque([0.0] * self.history_len, maxlen=self.history_len)
+        # New deque for flow rate
+        self._flow_rate_data = deque([0.0] * self.history_len, maxlen=self.history_len)
+
         self._eStopValue = False
         self._testingFlag = False
         self._last_pressures = [0.0, 0.0, 0.0]
@@ -64,6 +69,14 @@ class SystemDataManager(QObject):
     @property
     def temp_data(self) -> List[deque]:
         return self._temp_data
+
+    @property
+    def pump_feedback_percent_data(self) -> deque:
+        return self._pump_feedback_percent_data
+
+    @property
+    def flow_rate_data(self) -> deque:
+        return self._flow_rate_data
 
     @property
     def eStopValue(self) -> bool:
@@ -121,6 +134,9 @@ class SystemDataManager(QObject):
     def update_current_data(self, pump_percent: float, flow_kg_per_h: float):
         self._last_pump_feedback = pump_percent
         self._last_flow_rate = flow_kg_per_h
+        # Append data to the new deques
+        self._pump_feedback_percent_data.append(pump_percent)
+        self._flow_rate_data.append(flow_kg_per_h)
         self.pump_feedback_updated.emit(pump_percent, flow_kg_per_h)
 
     def reset_pressure_data(self):
@@ -144,12 +160,23 @@ class SystemDataManager(QObject):
     def reset_feedback_data(self):
         self._last_pump_feedback = 0.0
         self._last_flow_rate = 0.0
+        # Clear and re-initialize the feedback deques
+        self._pump_feedback_percent_data.clear()
+        self._pump_feedback_percent_data.extend([0.0] * self._history_len)
+        self._flow_rate_data.clear()
+        self._flow_rate_data.extend([0.0] * self._history_len)
         self.pump_feedback_updated.emit(self._last_pump_feedback, self._last_flow_rate)
 
     def toggle_e_stop_state(self):
         self.eStopValue = not self.eStopValue
 
+
 class PyqtgraphPlotWidget(QWidget):
+    """
+    A QWidget class that displays real-time pressure and temperature data using pglive.
+    It creates multiple plot widgets for individual pressure sensors and a combined plot for temperatures.
+    All plots and connectors are managed in dictionaries for modular access.
+    """
     def __init__(self, data_manager: SystemDataManager):
         super().__init__()
         self.data_manager = data_manager
@@ -158,78 +185,150 @@ class PyqtgraphPlotWidget(QWidget):
         plot_layout = QVBoxLayout()
         self.history_len = self.data_manager.history_len
 
-        self.pressure_connectors = []
-        self.temperature_connectors = []
-        self.pressure_live_lines = [] # Still needed for future flexibility if direct access is ever needed (e.g. for clearing)
-        self.temperature_live_lines = []
+        # Dictionaries to store LiveLinePlot and DataConnector instances by signal name
+        self.signal_plots: Dict[str, LiveLinePlot] = {}
+        self.signal_connectors: Dict[str, DataConnector] = {}
+        self.plot_widgets: Dict[str, LivePlotWidget] = {} # To store the LivePlotWidget instances themselves
 
-        # Pressure plots - one per sensor
-        self.pressure_plots = []
-        for i, title in enumerate(["PT1401", "PT1402", "PT1403"]):
+        # --- Define Plot Widgets (Containers for Curves) ---
+        # Pressure plots (each sensor gets its own LivePlotWidget)
+        pressure_plot_configs = [
+            {"key": "PT1401_plot", "title": "PT1401", "y_range": [0, 150], "roll_on_tick": self.history_len},
+            {"key": "PT1402_plot", "title": "PT1402", "y_range": [0, 300], "roll_on_tick": self.history_len},
+            {"key": "PT1403_plot", "title": "PT1403", "y_range": [0, 300], "roll_on_tick": self.history_len},
+        ]
+        for config in pressure_plot_configs:
             widget = LivePlotWidget(
-                title=title,
-                x_range_controller=LiveAxisRange(roll_on_tick=30),
-                y_range_controller=LiveAxisRange(fixed_range=[0, 5])
+                title=config['title'],
+                x_range_controller=LiveAxisRange(roll_on_tick=config['roll_on_tick']),
+                y_range_controller=LiveAxisRange(fixed_range=config['y_range'])
             )
-            plot = LiveLinePlot(pen=QPen(Qt.green, 3), auto_fill_history=True, symbol='o', symbolSize=8) # Increased thickness, added symbols
-            widget.addItem(plot)
             plot_layout.addWidget(widget)
-            self.pressure_plots.append(widget)
-            self.pressure_live_lines.append(plot) # Store reference to the line
+            self.plot_widgets[config['key']] = widget # Store the LivePlotWidget by a unique key
 
-            # DataConnector manages the data feeding. update_rate is critical here.
-            connector = DataConnector(plot, max_points=self.history_len, update_rate=30) # 30 updates per second
-            self.pressure_connectors.append(connector)
-
-        # Temperature combined plot (two curves)
+        # Temperature combined plot (single LivePlotWidget for all temperature curves)
+        temp_plot_key = "temperature_combined_plot"
         self.temp_widget = LivePlotWidget(
             title="Temperatures",
-            x_range_controller=LiveAxisRange(roll_on_tick=30),
-            y_range_controller=LiveAxisRange(fixed_range=[10, 30])
+            x_range_controller=LiveAxisRange(roll_on_tick=self.history_len),
+            y_range_controller=LiveAxisRange(fixed_range=[10, 100])
         )
-        temp_curve1 = LiveLinePlot(pen=QPen(Qt.red, 3), auto_fill_history=True, symbol='s', symbolSize=8)
-        temp_curve2 = LiveLinePlot(pen=QPen(Qt.blue, 3), auto_fill_history=True, symbol='t', symbolSize=8)
-        self.temp_widget.addItem(temp_curve1)
-        self.temp_widget.addItem(temp_curve2)
+        self.temp_widget.addLegend() # Add legend for combined plot to differentiate curves
         plot_layout.addWidget(self.temp_widget)
+        self.plot_widgets[temp_plot_key] = self.temp_widget # Store the combined temp widget
 
-        self.temperature_connectors = [
-            DataConnector(temp_curve1, max_points=self.history_len, update_rate=30),
-            DataConnector(temp_curve2, max_points=self.history_len, update_rate=30),
+        # --- NEW: Pump Feedback Plot ---
+        pump_feedback_plot_key = "pump_feedback_plot"
+        self.pump_feedback_widget = LivePlotWidget(
+            title="Pump Feedback & Flow Rate",
+            x_range_controller=LiveAxisRange(roll_on_tick=self.history_len), # Adjust roll_on_tick for 60s
+            y_range_controller=LiveAxisRange(fixed_range=[0, 100]) # Example range for pump % and flow
+        )
+        self.pump_feedback_widget.addLegend()
+        plot_layout.addWidget(self.pump_feedback_widget)
+        self.plot_widgets[pump_feedback_plot_key] = self.pump_feedback_widget
+
+        # --- Define Individual Signal Configurations and Create Plots/Connectors ---
+        # This list holds the configuration for each line you want to plot.
+        # It links a signal name (dict key) to its data index, color, and parent plot widget.
+        self.signal_configs = [
+            # Pressure Signals (each goes to its own dedicated plot widget)
+            {"name": "PT1401", "data_type": "pressure", "data_index": 0, "color": 'g', "plot_widget_key": "PT1401_plot", "history_len_key": "history_len"},
+            {"name": "PT1402", "data_type": "pressure", "data_index": 1, "color": 'g', "plot_widget_key": "PT1402_plot", "history_len_key": "history_len"},
+            {"name": "PT1403", "data_type": "pressure", "data_index": 2, "color": 'g', "plot_widget_key": "PT1403_plot", "history_len_key": "history_len"},
+            # Temperature Signals (all go to the combined temperature plot widget)
+            {"name": "T01", "data_type": "temperature", "data_index": 0, "color": 'r', "plot_widget_key": temp_plot_key, "history_len_key": "history_len"},
+            {"name": "T02", "data_type": "temperature", "data_index": 1, "color": 'b', "plot_widget_key": temp_plot_key, "history_len_key": "history_len"},
+            {"name": "Heater", "data_type": "temperature", "data_index": 2, "color": 'w', "plot_widget_key": temp_plot_key, "history_len_key": "history_len"},
+            # NEW: Pump Feedback Signals (go to the new pump feedback plot widget)
+            {"name": "Pump_Percent", "data_type": "pump_feedback", "data_index": 0, "color": 'c', "plot_widget_key": pump_feedback_plot_key, "history_len_key": "history_len"},
+            # {"name": "Flow_Rate", "data_type": "pump_feedback", "data_index": 1, "color": 'm', "plot_widget_key": pump_feedback_plot_key, "history_len_key": "pump_feedback_history_len"},
         ]
-        self.temperature_live_lines = [temp_curve1, temp_curve2] # Store references
+
+        # Loop through the signal configurations to create and store plots and connectors
+        for config in self.signal_configs:
+            signal_name = config['name']
+            color = config['color']
+            plot_widget = self.plot_widgets[config['plot_widget_key']]
+            
+            # Determine which history length to use
+            max_points = getattr(self.data_manager, config['history_len_key'])
+
+            # Create LiveLinePlot with explicit pen (width 1) and no filling
+            plot_item = LiveLinePlot(
+                pen=pg.mkPen(color, width=1), # Use pg.mkPen for clarity and control
+                name=signal_name, # Name for legend
+                fillLevel=None,   # Ensure no filling below the line
+                fillBrush=None    # Ensure no filling brush is applied
+            )
+            plot_widget.addItem(plot_item)
+            self.signal_plots[signal_name] = plot_item # Store plot item by its signal name
+
+            # Create DataConnector for this plot item
+            connector = DataConnector(plot_item, max_points=max_points, update_rate=30)
+            self.signal_connectors[signal_name] = connector # Store connector by its signal name
 
         self.layout.addLayout(plot_layout)
 
+        # Connect to data manager signals for updates
+        # The update methods will now use the dictionaries for dynamism
         self.data_manager.pressure_updated.connect(self._on_pressure_data_updated)
         self.data_manager.temperature_updated.connect(self._on_temperature_data_updated)
+        # NEW: Connect to pump_feedback_updated signal
+        self.data_manager.pump_feedback_updated.connect(self._on_pump_feedback_updated)
 
     def _on_pressure_data_updated(self, pressures: List[float]):
-        """Slot to handle pressure_updated signal from SystemDataManager."""
-        for i, connector in enumerate(self.pressure_connectors):
-            if i < len(pressures):
-                connector.cb_append_data_point(pressures[i])
-                print(f"  Appended pressure[{i}]: {pressures[i]}") # Debug print
+        """
+        Slot to handle pressure_updated signal from SystemDataManager.
+        Updates specific pressure plots using their associated DataConnectors.
+        """
+        for config in self.signal_configs:
+            if config['data_type'] == "pressure":
+                idx = config['data_index']
+                signal_name = config['name']
+                if idx < len(pressures):
+                    # Fetch the correct DataConnector using the signal name
+                    self.signal_connectors[signal_name].cb_append_data_point(pressures[idx])
+                    # print(f"Appended pressure[{idx}] ({signal_name}): {pressures[idx]}")
 
     def _on_temperature_data_updated(self, temperatures: List[float]):
-        """Slot to handle temperature_updated signal from SystemDataManager."""
-        if len(temperatures) >= 2:
-            self.temperature_connectors[0].cb_append_data_point(temperatures[0])
-            self.temperature_connectors[1].cb_append_data_point(temperatures[1])
-            print(f"  Appended temperature[0]: {temperatures[0]}, temperature[1]: {temperatures[1]}") # Debug print
+        """
+        Slot to handle temperature_updated signal from SystemDataManager.
+        Updates specific temperature plots using their associated DataConnectors.
+        """
+        for config in self.signal_configs:
+            if config['data_type'] == "temperature":
+                idx = config['data_index']
+                signal_name = config['name']
+                if idx < len(temperatures):
+                    # Fetch the correct DataConnector using the signal name
+                    self.signal_connectors[signal_name].cb_append_data_point(temperatures[idx])
+                    # print(f"Appended temperature[{idx}] ({signal_name}): {temperatures[idx]}")
 
-    def update_plot(self):
+    def _on_pump_feedback_updated(self, pump_percent: float, flow_kg_per_h: float):
         """
-        Triggers the update/redraw of all LivePlotWidgets.
-        Called periodically by a QTimer.
+        Slot to handle pump_feedback_updated signal from SystemDataManager.
+        Updates the pump feedback and flow rate plots.
         """
-        # We rely on DataConnector's update_rate to push data to the plot,
-        # and the LivePlotWidget.update() to trigger the redraw.
-        # No more direct access to connector.data_buffer is needed here.
-        for plot_widget in self.pressure_plots:
-            plot_widget.update()
-        self.temp_widget.update()
-        print("PyqtgraphPlotWidget: Triggering plot redraw.") # Debug print
+        # Update Pump_Percent plot
+        self.signal_connectors["Pump_Percent"].cb_append_data_point(pump_percent)
+        # Update Flow_Rate plot
+        self.signal_connectors["Flow_Rate"].cb_append_data_point(flow_kg_per_h)
+        # print(f"Appended pump feedback: {pump_percent}, flow rate: {flow_kg_per_h}")
+
+    def get_signal_plot(self, signal_name: str) -> Union[LiveLinePlot, None]:
+        """
+        Returns the LiveLinePlot associated with the given signal name.
+        This allows you to dynamically access a plot item using its name (e.g., to hide it or change its pen).
+        """
+        return self.signal_plots.get(signal_name)
+
+    def get_signal_connector(self, signal_name: str) -> Union[DataConnector, None]:
+        """
+        Returns the DataConnector associated with the given signal name.
+        This allows dynamic access to a data connector.
+        """
+        return self.signal_connectors.get(signal_name)
 
 
 class PermanentRightHandDisplay(QWidget):
@@ -684,10 +783,7 @@ class PumpControlWindow(QWidget):
 
         self.setLayout(self.superLayout)
 
-        # Timer for plot updates
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_plot)
-        self.timer.start(100) # Update plot every 100 milliseconds
+
 
         # Start asynchronous tasks
         asyncio.create_task(self.consumer_task())
@@ -789,24 +885,21 @@ class PumpControlWindow(QWidget):
         while True:
             # Retrieve a single structured message from the queue. This call will block until data is available.
             try:
-                # IMPORTANT: Ensure that CanOpen.start_listener puts dictionary objects
+                # Ensure that CanOpen.start_listener puts dictionary objects
                 # into the queue, or adjust this consumer_task to expect CanData objects.
                 # Based on previous conversation, the CanOpen.start_listener needs to be updated
                 # to put dictionaries (e.g., {'data_type': 'voltage', 'values': [...]})
                 # into the queue, or this consumer_task needs to be adjusted.
                 message: Dict[str, Any] = await self.can_data_queue.get()
             except asyncio.CancelledError:
-                # Handle task cancellation gracefully if the queue is shut down
                 break
             except Exception as e:
                 print(f"Error getting message from queue: {e}")
-                continue # Skip to next iteration on error
+                continue
 
-            # node_id = message.get("node_id") # Node ID can be retrieved if needed, but not directly used here
             data_type = message.get("data_type")
             values = message.get("values")
 
-            # Process data based on its type and update the data manager
             if data_type == 'voltage':
                 self.data_manager.update_pressure_data(values)
 
@@ -814,7 +907,6 @@ class PumpControlWindow(QWidget):
                 self.data_manager.update_temperature_data(values)
 
             elif data_type == '4-20mA':
-                # Assuming values is a dict like {"pump_percent": X, "flow_kg_per_h": Y}
                 self.data_manager.update_current_data(values["pump_percent"], values["flow_kg_per_h"])
 
             self.can_data_queue.task_done() # Mark task as done for the single queue
@@ -885,13 +977,6 @@ class PumpControlWindow(QWidget):
         except Exception as e:
             self.status_bar.setText(f"CAN Send Error: {str(e)}")
 
-    def update_plot(self):
-        """
-        Triggers the update of the pyqtgraph plots.
-        Called periodically by a QTimer. The plot canvas now gets data directly from the data manager.
-        """
-        self.plot_canvas.update_plot()
-
     def closeEvent(self, event):
         """
         Overrides the QWidget's close event.
@@ -952,15 +1037,12 @@ async def main_async():
     Initializes asyncio queues for CAN data, creates the GUI windows,
     and starts the Qt event loop along with asynchronous tasks.
     """
-    # Create a single asyncio queue for all incoming CAN data messages
-    main_can_queue = asyncio.Queue(maxsize=20) # Increased maxsize for buffer if needed
+    main_can_queue = asyncio.Queue(maxsize=20) 
 
-    app = QApplication(sys.argv) # Initialize the PySide6 application
-
-    # Create the central data manager
+    app = QApplication(sys.argv) 
     data_manager = SystemDataManager(history_len=100)
 
-    pAndIdGraphicWindow = PAndIDGraphicWindow() # Create the P&ID graphic window
+    pAndIdGraphicWindow = PAndIDGraphicWindow() 
 
     # Connect SystemDataManager signals to P&ID graphic update function (nh3pump.run_plots)
     # The lambda functions ensure only the relevant data is passed and the function is awaited.
@@ -973,7 +1055,6 @@ async def main_async():
     data_manager.pump_feedback_updated.connect(lambda p, f: asyncio.create_task(pAndIdGraphicWindow.nh3pump.run_plots(p, "PUMP")))
     data_manager.pump_feedback_updated.connect(lambda p, f: asyncio.create_task(pAndIdGraphicWindow.nh3pump.run_plots(f, "FE01")))
 
-    # Create the pump control window, passing necessary dependencies
     controlWindow = PumpControlWindow(
         pAndIdGraphicWindow.nh3pump.run_plots, # P&ID update function reference
         bus=None,                              # Initial bus (will be set on connect)
@@ -982,19 +1063,12 @@ async def main_async():
     )
 
     pAndIdGraphicWindow.show() # Display the P&ID window
-    controlWindow.show() # Display the control window
+    controlWindow.show() 
 
     while True:
-        await asyncio.sleep(0.01) # Short sleep to yield control
-        app.processEvents() # Process PySide6 events to keep the GUI responsive
+        await asyncio.sleep(0.01) 
+        app.processEvents() 
 
 if __name__ == "__main__":
-    os.environ["QT_OPENGL"] = "software"
-    print(f"QT_OPENGL set to: {os.environ.get('QT_OPENGL')}") # Debug print
 
-    # Ensure high DPI scaling is enabled for modern displays
-    QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling)
-    # Share OpenGL contexts if multiple GL widgets are used, though not strictly necessary for a single plot widget
-    QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
-    # Entry point of the application. Runs the main asynchronous function.
     asyncio.run(main_async())
