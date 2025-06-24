@@ -26,7 +26,7 @@ from can_open_protocol import CanOpen
 
 class NH3PumpControlScene(QWidget):
 
-    valveState = True # for testing valve state initially set to true (open) , typically would be set based on actual message
+    # valveState = True # for testing valve state initially set to true (open) , typically would be set based on actual message
 
     def __init__(self):
         super().__init__()

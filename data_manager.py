@@ -172,6 +172,8 @@ class SystemDataManager(QObject):
                 while not self._can_data_queue.empty():
                     self._can_data_queue.get_nowait()
                     self._can_data_queue.task_done()
+                
+                CanOpen.operational(126, self._bus)
 
                 CanOpen.start_listener(self._bus, resolution=16, data_queue=self._can_data_queue)
 

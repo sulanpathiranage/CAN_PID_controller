@@ -107,7 +107,7 @@ class CanOpen:
         """Set nodes to operational
 
         Args:
-            node_ids (_type_): Node ID in byte form
+            node_ids (_type_): Node ID in byte form maybe dec...
             can_bus (_type_): can bus object i.e can_bus = can.interface.Bus(...)
         """
         nmt_id  = 0x0000
@@ -223,7 +223,26 @@ class CanOpen:
 
         return raw_out1, raw_out2
     
+    @staticmethod
+    def digital_to_16bitanalog(digitalval):
+        if  digitalval == 1:
+            output = 0xFF
+        elif digitalval == 0:
+            output = 0
+        else: 
+            print("digital value error!")
 
+        return output
+    
+    @staticmethod
+    def generic_dout_msg(out1, out2, out3, out4, arbitration_id, can_bus):
+        aout1 = CanOpen.digital_to_16bitanalog(out1)
+        aout2 = CanOpen.digital_to_16bitanalog(out2)
+        aout3 = CanOpen.digital_to_16bitanalog(out3)
+        aout4 = CanOpen.digital_to_16bitanalog(out4)
+        payload = CanOpen.generate_uint_16bit_msg(aout1, aout2, aout3, aout4)
+        msg = can.Message(arbitration_id=arbitration_id, is_extended_id=False, data = payload)
+        can_bus.send(msg)
 
     
     @staticmethod
@@ -312,7 +331,6 @@ class CanOpen:
         
         if (eStopFlag) :
             msg = can.Message(arbitration_id=can_id, data=[0x00]*8, is_extended_id=False)
-            #print("PUMP WAS E-STOPPED")
         else:
             if len(data) > 8:
                 raise ValueError("CAN data cannot exceed 8 bytes")
