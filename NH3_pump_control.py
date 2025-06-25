@@ -31,6 +31,9 @@ class NH3PumpControlScene(QWidget):
     def __init__(self):
         super().__init__()
 
+        #Assuming valve is closed initially
+        self.valveState = False
+
         #Create Layout
         verticalLayout = QVBoxLayout()
         horizontalButtonLayout = QHBoxLayout()
@@ -230,7 +233,7 @@ class NH3PumpControlScene(QWidget):
 
             #Update valve state
             self.valveState = True
-    
+   
     def toggleBlueValve(self):
 
         # True denotes open valve
