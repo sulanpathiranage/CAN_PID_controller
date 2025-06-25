@@ -71,6 +71,8 @@ class NH3PumpControlScene(QWidget):
         #Create Labels
         self.esv10401Label = CreatePlotLabel(self.systemControlScene, -290, -140)
         self.esv10401Label.setLabelText("CLOSED")
+        self.blueValveLabel = CreatePlotLabel(self.systemControlScene, 725, -60)
+        self.blueValveLabel.setLabelText("CLOSED")
         self.ti10401Label = CreatePlotLabel(self.systemControlScene, -240, 210)
         self.pt10401Label = CreatePlotLabel(self.systemControlScene, 10, 210)
         self.pi10120Label = CreatePlotLabel(self.systemControlScene, 160, -190)
@@ -80,7 +82,7 @@ class NH3PumpControlScene(QWidget):
         self.ti10122Label = CreatePlotLabel(self.systemControlScene, 510, -190)
         self.pi10123Label = CreatePlotLabel(self.systemControlScene, 610, -190)
         self.ti01Label = CreatePlotLabel(self.systemControlScene, 350, 260)
-        self.tic02Label = CreatePlotLabel(self.systemControlScene, 500, 260)
+        #self.tic02Label = CreatePlotLabel(self.systemControlScene, 500, 260)
         self.fic10124Label = CreatePlotLabel(self.systemControlScene, 700, 160)
 
         # Create plots to start data collection
@@ -93,11 +95,12 @@ class NH3PumpControlScene(QWidget):
         self.ti10122Plot = CreatePlotWindow(self.ti10122Label.setLabelText, "TI 10122 Plot", "Temperature vs. Time", "Temperature", "C")
         self.pi10123Plot = CreatePlotWindow(self.pi10123Label.setLabelText, "PI 10123 Plot", "Pressure vs. Time", "Pressure", "bar")
         self.ti01Plot = CreatePlotWindow(self.ti01Label.setLabelText, "TI 01 Plot", "Temperature vs. Time", "Temperature", "C")
-        self.tic02Plot = CreatePlotWindow(self.tic02Label.setLabelText, "TIC 02 Plot", "Temperature vs. Time", "Temperature", "C")
+        #self.tic02Plot = CreatePlotWindow(self.tic02Label.setLabelText, "TIC 02 Plot", "Temperature vs. Time", "Temperature", "C")
         self.fic10124Plot = CreatePlotWindow(self.fic10124Label.setLabelText, "FIC 10124 Plot", "Flow vs. Time", "Flow", "L/min")
 
         # Create Plot buttons
         self.esv10401Button = CreatePlotButton(self.systemControlScene, self.toggleEsv10401Valve, "Toggle", -290, -100)
+        self.blueValveButton = CreatePlotButton(self.systemControlScene, self.toggleBlueValve, "Toggle", 725, -25)
         self.ti10401Button = CreatePlotButton(self.systemControlScene, self.ti10401Plot.show, "Plot", -240, 250)
         self.pt10401Button = CreatePlotButton(self.systemControlScene, self.pt10401Plot.show, "Plot", 10, 250)
         self.pi10120Button = CreatePlotButton(self.systemControlScene, self.pi10120Plot.show, "Plot", 160, -140)
@@ -107,7 +110,7 @@ class NH3PumpControlScene(QWidget):
         self.ti10122Button = CreatePlotButton(self.systemControlScene, self.ti10122Plot.show, "Plot", 510, -140)
         self.pi10123Button = CreatePlotButton(self.systemControlScene, self.pi10123Plot.show, "Plot", 610, -140)
         self.ti01Button = CreatePlotButton(self.systemControlScene, self.ti01Plot.show, "Plot", 350, 310)
-        self.tic02Button = CreatePlotButton(self.systemControlScene, self.tic02Plot.show, "Plot", 500, 310)
+        #self.tic02Button = CreatePlotButton(self.systemControlScene, self.tic02Plot.show, "Plot", 500, 310)
         self.fic10124Button = CreatePlotButton(self.systemControlScene, self.fic10124Plot.show, "Plot", 700, 210)
 
         #view_size = self.systemControlView.viewport().size()
@@ -146,7 +149,7 @@ class NH3PumpControlScene(QWidget):
         #SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TAHH", "01", 400, 200)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "01", 350, 200)
         #SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TT", "02", 450, 150)
-        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TIC", "02", 500, 200)
+        #SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TIC", "02", 500, 200)
 
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10122", 550, -100)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10123", 600, -100)
@@ -224,6 +227,35 @@ class NH3PumpControlScene(QWidget):
             # Update text
             self.esv10401Label.setLabelText("OPEN")
             self.esv10401Label.setLabelColorGreen()
+
+            #Update valve state
+            self.valveState = True
+    
+    def toggleBlueValve(self):
+
+        # True denotes open valve
+        # False denotes closed valve
+
+        if (self.valveState == True):
+            # # Send signal to close valve
+            # try:
+            #     await CanOpen.send_can_message(self.bus, 0x600, data, eStopValue, False, testingFlag)
+            # except Exception as e:
+            #         self.status_bar.setText(f"CAN Send Error: {str(e)}")
+
+            # Update text
+            self.blueValveLabel.setLabelText("CLOSED")
+            self.blueValveLabel.setLabelColorRed()
+
+            #Update valve state
+            self.valveState = False
+
+        else :
+            # Send signal to open valve
+
+            # Update text
+            self.blueValveLabel.setLabelText("OPEN")
+            self.blueValveLabel.setLabelColorGreen()
 
             #Update valve state
             self.valveState = True
