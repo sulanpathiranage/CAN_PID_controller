@@ -27,7 +27,7 @@ from app_stylesheets import Stylesheets
 from NH3_pump_control import NH3PumpControlScene
 from NH3_vaporizer_control import NH3VaporizerControlScene
 from data_manager import SystemDataManager
-from app_logger import AppLogger
+from log_manager import AppLogger
 
 # Define the logging columns: (key_name, header_name, formatter_string)
 # key_name: Used to retrieve data from the dictionary passed to log_data.
@@ -175,7 +175,12 @@ class PumpControlWidget(QWidget):
         form_layout.addWidget(QLabel("Pump State:"), 0, 0)
         form_layout.addWidget(self.pump_on_checkbox, 0, 1, 1, 2)
 
-        self.speed_slider = QSlider(Qt.Orientation.Horizontal, value=0, range=(0, 100))
+        # Fix start
+        self.speed_slider = QSlider(Qt.Orientation.Horizontal)
+        self.speed_slider.setRange(0, 100)
+        self.speed_slider.setValue(0)
+        # Fix end
+
         self.speed_entry = QLineEdit("0", fixedWidth=50, alignment=Qt.AlignmentFlag.AlignCenter)
 
         form_layout.addWidget(QLabel("Speed:"), 1, 0)
@@ -374,7 +379,7 @@ class PumpControlWindow(QWidget):
         scroll_area.setFixedWidth(320)
         main_layout.addWidget(scroll_area)
         main_layout.addWidget(self.plot_canvas, stretch=1)
-        main_layout.addWidget(self.permanentRightHandDisplay) # Corrected typo, was permanentRightHandControl
+        main_layout.addWidget(self.permanentRightHandControl) # Corrected typo, was permanentRightHandControl
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._update_gui_and_can_commands)

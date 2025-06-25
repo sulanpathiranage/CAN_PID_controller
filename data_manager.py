@@ -173,7 +173,7 @@ class SystemDataManager(QObject):
                     self._can_data_queue.get_nowait()
                     self._can_data_queue.task_done()
                 
-                CanOpen.operational(126, self._bus)
+                CanOpen.operational([126], self._bus)
 
                 CanOpen.start_listener(self._bus, resolution=16, data_queue=self._can_data_queue)
 
@@ -277,8 +277,7 @@ class SystemDataManager(QObject):
                 try:
                     # Pass eStopValue and testingFlag from the data manager
                     await CanOpen.send_can_message(self._bus, 0x600, data,
-                                                   self.eStopValue, # eStop flag
-                                                   self.testingFlag) # testingFlag
+                                                   self.eStopValue)
                 except Exception as e:
                     self.can_error.emit(f"CAN Send Error (Pump): {str(e)}")
 
