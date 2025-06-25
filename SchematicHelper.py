@@ -68,6 +68,62 @@ class SchematicHelperFunctions:
         line_item.setPen(pen)
         scene.addItem(line_item)
 
+    def CreateDoubleTriangleValve(scene, xPos=0, yPos=0, size=20, label=""):
+        """
+        Draws two equilateral triangles pointing toward each other tip-to-tip (horizontal alignment).
+
+        Parameters:
+            scene (QGraphicsScene): The scene to draw into.
+            xPos (float): Center X position of the symbol.
+            yPos (float): Center Y position of the symbol.
+            size (float): Length of each triangle side.
+            label (str): Optional label below the symbol.
+        """
+        from PySide6.QtWidgets import QGraphicsPolygonItem, QGraphicsTextItem
+        from PySide6.QtGui import QPolygonF, QPen, QColor, QFont
+        from PySide6.QtCore import QPointF, Qt
+        import math
+
+        pen = QPen(QColor("black"))
+        pen.setWidth(2)
+
+        height = (math.sqrt(3) / 2) * size  # Height of the triangle
+
+        # Left triangle pointing right (→)
+        left_points = [
+            QPointF(0, 0),
+            QPointF(-size, -height / 2),
+            QPointF(-size, height / 2)
+        ]
+        left_triangle = QGraphicsPolygonItem(QPolygonF(left_points))
+        left_triangle.setPen(pen)
+        left_triangle.setBrush(Qt.GlobalColor.transparent)
+        left_triangle.setPos(xPos, yPos)
+
+        # Right triangle pointing left (←)
+        right_points = [
+            QPointF(0, 0),
+            QPointF(size, -height / 2),
+            QPointF(size, height / 2)
+        ]
+        right_triangle = QGraphicsPolygonItem(QPolygonF(right_points))
+        right_triangle.setPen(pen)
+        right_triangle.setBrush(Qt.GlobalColor.transparent)
+        right_triangle.setPos(xPos, yPos)
+
+        # Optional label
+        if label:
+            text_item = QGraphicsTextItem(label)
+            text_item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+            text_item.setDefaultTextColor(Qt.GlobalColor.black)
+            text_rect = text_item.boundingRect()
+            text_item.setPos(xPos - text_rect.width() / 2, yPos + height + 4)
+            scene.addItem(text_item)
+
+        # Add to scene
+        scene.addItem(left_triangle)
+        scene.addItem(right_triangle)
+
     #height must be double the indent for this to work properly
     def CreateInputOutputLabel(scene, height, width, indent, text, xPos, yPos):
         # height = 40
@@ -304,7 +360,7 @@ class CreatePlotLabel():
     def setLabelColorRed(self):
         self.label.setStyleSheet(Stylesheets.LabelStyleRed())
 
-
+"""
 class CreatePlotWindow(QDialog):
 
     update_plot_signal = Signal(list)
@@ -344,9 +400,57 @@ class CreatePlotWindow(QDialog):
         # Connect signal to slot
         self.update_plot_signal.connect(self.update_plot)
         self.update_label_signal.connect(self.update_label)
+    """
+class CreatePlotWindow(QDialog):
 
-        # Start collecting data in an async thread
-        #self.dataCollectionTask = asyncio.create_task(self.run()) # Have the same thread call the polling function
+    update_plot_signal = Signal(list)
+    update_label_signal = Signal(float)
+
+    def __init__(
+        self,
+        label_func,
+        title="Sample Plot",
+        poll_rate=1,
+        y_label="Temperature",
+        y_unit="°C",
+        x_label="Time",
+        x_unit="s",
+        parent=None
+    ):
+        super().__init__(parent)
+
+        self.setWindowTitle(title)
+        self.resize(200, 200)
+
+        self.poll_rate = poll_rate
+        self.labelUpdateFunc = label_func
+
+        self.history_len = 100
+        self.data = deque([0.0] * self.history_len, maxlen=self.history_len)
+
+        self.label = QLabel("Starting...")
+        layout = QVBoxLayout()
+
+        self.plot_widget = pg.PlotWidget()
+        self.plot_widget.setLabel('left', y_label, units=y_unit)
+        self.plot_widget.setLabel('bottom', x_label, units=x_unit)
+        self.plot_widget.setYRange(0, 150)
+        self.plot_widget.setXRange(0, 10)
+        self.plot_widget.showGrid(x=True, y=True)
+        self.plot_widget.getAxis("left").setStyle(tickFont=pg.Qt.QtGui.QFont("Arial", 10))
+
+        self.curve = self.plot_widget.plot(pen=pg.mkPen('r', width=2), name="T01")
+
+        layout.addWidget(self.label)
+        layout.addWidget(self.plot_widget)
+        self.setLayout(layout)
+
+        self.update_plot_signal.connect(self.update_plot)
+        self.update_label_signal.connect(self.update_label)
+
+
+    # Start collecting data in an async thread
+    #self.dataCollectionTask = asyncio.create_task(self.run()) # Have the same thread call the polling function
 
     async def run(self, value):
         #while True:
