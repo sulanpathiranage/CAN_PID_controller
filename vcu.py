@@ -5,6 +5,7 @@ os.environ["PYQTGRAPH_QT_LIB"] = "PySide6"
 import sys
 import asyncio
 from typing import List, Dict, Any, Union, Tuple
+import app_logger
 
 from pglive.sources.live_plot_widget import LivePlotWidget
 from pglive.sources.live_plot import LiveLinePlot
@@ -175,12 +176,7 @@ class PumpControlWidget(QWidget):
         form_layout.addWidget(QLabel("Pump State:"), 0, 0)
         form_layout.addWidget(self.pump_on_checkbox, 0, 1, 1, 2)
 
-        # Fix start
-        self.speed_slider = QSlider(Qt.Orientation.Horizontal)
-        self.speed_slider.setRange(0, 100)
-        self.speed_slider.setValue(0)
-        # Fix end
-
+        self.speed_slider = QSlider(Qt.Orientation.Horizontal, value=0, range=(0, 100))
         self.speed_entry = QLineEdit("0", fixedWidth=50, alignment=Qt.AlignmentFlag.AlignCenter)
 
         form_layout.addWidget(QLabel("Speed:"), 1, 0)
@@ -379,7 +375,7 @@ class PumpControlWindow(QWidget):
         scroll_area.setFixedWidth(320)
         main_layout.addWidget(scroll_area)
         main_layout.addWidget(self.plot_canvas, stretch=1)
-        main_layout.addWidget(self.permanentRightHandControl) # Corrected typo, was permanentRightHandControl
+        main_layout.addWidget(self.permanentRightHandDisplay) # Corrected typo, was permanentRightHandControl
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._update_gui_and_can_commands)
