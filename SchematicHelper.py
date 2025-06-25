@@ -84,7 +84,7 @@ class SchematicHelperFunctions:
         from PySide6.QtCore import QPointF, Qt
         import math
 
-        pen = QPen(QColor("black"))
+        pen = QPen(QColor("blue"))
         pen.setWidth(2)
 
         height = (math.sqrt(3) / 2) * size  # Height of the triangle
