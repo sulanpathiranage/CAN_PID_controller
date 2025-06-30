@@ -1,9 +1,7 @@
 
-import sys
+import math
+
 from datetime import datetime
-import time
-import random
-import asyncio
 
 import pyqtgraph as pg
 
@@ -12,7 +10,6 @@ from app_stylesheets import Stylesheets
 from PySide6.QtCore import (
     Qt,
     QPointF,
-    QRectF,
     QLineF,
     Signal,
     QTimer
@@ -27,7 +24,6 @@ from PySide6.QtGui import (
 )
 
 from PySide6.QtWidgets import (
-    QApplication,
     QWidget,
     QVBoxLayout, QHBoxLayout,
     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
@@ -41,8 +37,16 @@ from PySide6.QtWidgets import (
 )
 
 from PySide6.QtWidgets import QPushButton, QGraphicsProxyWidget, QGraphicsScene, QGraphicsTextItem
-import pyqtgraph as pg  # import after PySide6 so pyqtgraph uses PySide6 internally
 from collections import deque
+from pglive.sources.data_connector import DataConnector
+from pglive.sources.live_plot import LiveLinePlot
+from pglive.sources.live_plot_widget import LivePlotWidget
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+from time import sleep
+from PySide6.QtCore import Slot
+from threading import Thread
+from PySide6.QtCore import QRectF
 
 class SchematicHelperFunctions:
 
@@ -51,6 +55,7 @@ class SchematicHelperFunctions:
 
     def Zoom_Out(scene):
         scene.scale(0.9, 0.9)
+    
 
     def DrawConnectionLine(scene, x1, y1, x2, y2, thickness=2):
         """
@@ -82,7 +87,6 @@ class SchematicHelperFunctions:
         from PySide6.QtWidgets import QGraphicsPolygonItem, QGraphicsTextItem
         from PySide6.QtGui import QPolygonF, QPen, QColor, QFont
         from PySide6.QtCore import QPointF, Qt
-        import math
 
         pen = QPen(QColor("blue"))
         pen.setWidth(2)
@@ -360,49 +364,7 @@ class CreatePlotLabel():
     def setLabelColorRed(self):
         self.label.setStyleSheet(Stylesheets.LabelStyleRed())
 
-"""
 class CreatePlotWindow(QDialog):
-
-    update_plot_signal = Signal(list)
-    update_label_signal = Signal(float)
-
-    def __init__(self, label_func, title="Sample Plot", poll_rate=1, parent=None):
-        super().__init__(parent)
-
-        self.setWindowTitle(title)
-        self.resize(200,200)
-        
-        self.poll_rate = poll_rate
-        #self.data_func = data_func
-        self.labelUpdateFunc = label_func
-
-        self.history_len = 100
-
-        #self.data = [] # Data stored here, as part of the class
-        self.data  = deque([0.0] * self.history_len, maxlen=self.history_len)
-
-        self.label = QLabel("Starting...")
-        layout = QVBoxLayout()
-
-        self.plot_widget = pg.PlotWidget()
-        self.plot_widget.setLabel('left', "Temperature", units='°C')
-        self.plot_widget.setLabel('bottom', "Time", units='s')
-        self.plot_widget.setYRange(0, 150)
-        self.plot_widget.setXRange(0, 10)
-        self.plot_widget.showGrid(x=True, y=True)
-        self.plot_widget.getAxis("left").setStyle(tickFont=pg.Qt.QtGui.QFont("Arial", 10))
-        self.curve = self.plot_widget.plot(pen=pg.mkPen('r', width=2), name="T01")
-
-        layout.addWidget(self.label)
-        layout.addWidget(self.plot_widget)
-        self.setLayout(layout)
-
-        # Connect signal to slot
-        self.update_plot_signal.connect(self.update_plot)
-        self.update_label_signal.connect(self.update_label)
-    """
-class CreatePlotWindow(QDialog):
-
     update_plot_signal = Signal(list)
     update_label_signal = Signal(float)
 
@@ -416,6 +378,7 @@ class CreatePlotWindow(QDialog):
         x_label="Time",
         x_unit="s",
         parent=None
+    
     ):
         super().__init__(parent)
 
@@ -431,15 +394,14 @@ class CreatePlotWindow(QDialog):
         self.label = QLabel("Starting...")
         layout = QVBoxLayout()
 
-        self.plot_widget = pg.PlotWidget()
+
+        self.plot_widget = LivePlotWidget()
         self.plot_widget.setLabel('left', y_label, units=y_unit)
         self.plot_widget.setLabel('bottom', x_label, units=x_unit)
-        self.plot_widget.setYRange(0, 150)
-        self.plot_widget.setXRange(0, 10)
         self.plot_widget.showGrid(x=True, y=True)
-        self.plot_widget.getAxis("left").setStyle(tickFont=pg.Qt.QtGui.QFont("Arial", 10))
 
-        self.curve = self.plot_widget.plot(pen=pg.mkPen('r', width=2), name="T01")
+        self.curve = self.plot_widget.plot(pen=pg.mkPen(color='r', width=2), name="Data")
+        self.connector = DataConnector(plot=self.curve, max_points=100, update_rate=10, plot_rate=10)
 
         layout.addWidget(self.label)
         layout.addWidget(self.plot_widget)
@@ -448,6 +410,7 @@ class CreatePlotWindow(QDialog):
         self.update_plot_signal.connect(self.update_plot)
         self.update_label_signal.connect(self.update_label)
 
+        self.connected = False  # Flag: Is data source connected?
 
     # Start collecting data in an async thread
     #self.dataCollectionTask = asyncio.create_task(self.run()) # Have the same thread call the polling function
@@ -460,24 +423,232 @@ class CreatePlotWindow(QDialog):
         #print("Updating plots")
         self.update_plot_signal.emit(list(self.data))
         self.update_label_signal.emit(value)
+
             
     def update_plot(self, data):
-
-        #time_axis = [i * self.poll_rate for i in range(len(data))]
         time_axis = [i * 0.1 for i in range(self.history_len)] # For sliding window of only last 10 seconds, otherwise use line above
 
-        #self.plot_widget.setXRange(0, len(time_axis)) # Use for non sliding window plot
-        self.curve.setData(time_axis, data)
-        self.plot_widget.update()
-
-        #print(f"Plotting {len(self.data)} Time Axis : {time_axis} Data: {self.data}")
+        for i in range(len(data)):
+            self.connector.add_xy_data_point(time_axis[i], data[i])
     
     def update_label(self, data_val):
-
-        # Update label as data comes in
         self.labelUpdateFunc(f"{data_val:.3g}"[:4].ljust(4))
-        #print("Updating Label")
+
+class CreateLivePlotWindow(QDialog):
+    update_label_signal = Signal(str)
+    refresh_plot_signal = Signal()
+
+    def __init__(
+        self,
+        label_func,
+        title="Sample Plot",
+        poll_rate=1,
+        y_label="Temperature",
+        y_unit="°C",
+        x_label="Time",
+        x_unit="s",
+        parent=None
+    ):
+        super().__init__(parent)
+
+        self._poll_rate = poll_rate
+        
+        self.refresh_plot_signal.connect(self.update_plot)
+
+        self.labelUpdateFunc = label_func
+        self.update_label_signal.connect(self._update_label)
+
+        self.setWindowTitle(title)
+        self.resize(700, 400)
+
+        self.poll_rate = poll_rate
+        self.labelUpdateFunc = label_func
+
+        self.label = QLabel("Starting...", alignment=Qt.AlignCenter)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.label)
+
+        # Setup matplotlib figure
+        self.fig = Figure()
+        self.ax = self.fig.add_subplot(111)
+        self.ax.set_ylabel(f"{y_label} ({y_unit})")
+        self.ax.set_xlabel(f"{x_label} ({x_unit})")
+        self.ax.set_ylim(0, 100)
+        self.ax.set_xlim(0, 100)
+        self.ax.grid(True)
+
+        self.canvas = FigureCanvas(self.fig)
+        layout.addWidget(self.canvas)
+
+        self.curve, = self.ax.plot([], [], 'r-', linewidth=2)
+        self.x_vals = deque(maxlen=100)
+        self.y_vals = deque(maxlen=100)
+        self.x = 0
+ 
+        # self.update_label_signal.connect(self.labelUpdateFunc)
+
+        # Setup plot refresher
+        self.refresh_timer = QTimer()
+        self.refresh_timer.timeout.connect(self.update_plot)
+        self.refresh_timer.start(100)  # ~20 FPS
+
+        self.running = False
+
+    def start_data_feed(self):
+        self.running = True
+        self.thread = Thread(target=self._data_feed_loop, daemon=True)
+        self.thread.start()
+
+    def _data_feed_loop(self):
+        while self.running:
+            self.x += 1
+            y = math.sin(self.x * 0.02) * 50 + 50
+            self.x_vals.append(self.x)
+            self.y_vals.append(y)
+            self.update_label_signal.emit(f"{y:.2f}")
+            sleep(self._poll_rate)
+
+    def update_plot(self):
+        if not self.running:
+            return
+        self.curve.set_data(self.x_vals, self.y_vals)
+        if self.x_vals:
+            self.ax.set_xlim(max(0, self.x_vals[0]), self.x_vals[-1])
+        self.canvas.draw_idle()
 
 
+    def stop_data_feed(self):
+        self.running = False
+        if hasattr(self, 'thread'):
+            self.thread.join()
 
-            
+    def closeEvent(self, event):
+        event.ignore()   # hide only
+        self.hide()
+
+    @Slot(str)
+    def _update_label(self, value: str):
+        self.labelUpdateFunc(value)
+
+    def load_initial_data(self, data):
+        self.x_vals.clear()
+        self.y_vals.clear()
+        for i, val in enumerate(data):
+            self.x_vals.append(i)
+            self.y_vals.append(val)
+        self.canvas.draw()
+
+    def start_plotting(self):
+        self.running = True
+        self.refresh_timer.start(100)
+
+    def stop_plotting(self):
+        self.running = False
+        self.refresh_timer.stop()
+
+    def set_external_buffer(self, x_vals, y_vals, counter_ref):
+        self.x_vals = x_vals
+        self.y_vals = y_vals
+        self.counter_ref = counter_ref  # a reference to the running counter
+
+
+# sensor_plot.py  (new file or put at top of SchematicHelper)
+class SensorPlot:
+    """
+    Wraps:  • QLabel on the P&ID   • LivePlotWindow   • feed thread
+    Keeps everything for one indicator in one object.
+    """
+
+    def __init__(self, scene: QGraphicsScene, name: str,
+                 pos: tuple[int, int], units: str,
+                 live: bool = True,  # False → simple history plot
+                 color: str = 'r'):
+
+        # --- label on the main schematic ---
+        self.label = CreatePlotLabel(scene, *pos)
+        self.label.setLabelText("--")
+
+        x_btn, y_btn = pos[0], pos[1] + 40
+        self.button = CreatePlotButton(scene, self._open_plot, "Plot", x_btn, y_btn)
+        self.button.pushButton.setEnabled(False)
+
+        self._x_counter = 0
+        self._data_buffer = deque(maxlen=1000)
+        self.x_vals = deque(maxlen=1000)
+        self.y_vals = deque(maxlen=1000)
+
+        # --- pop-up plot window ---
+        if live:
+            self.plot = CreateLivePlotWindow(self.label.setLabelText,
+                                             f"{name} Plot",
+                                             poll_rate=0.1,
+                                             y_label=name,
+                                             y_unit=units)
+        else:
+            self.plot = CreatePlotWindow(self.label.setLabelText,
+                                         f"{name} Plot",
+                                         y_label=name,
+                                         y_unit=units)
+
+        # --- internal sine-wave generator (replace with real data) ---
+        self._running = False
+        self._thread = None
+
+        self.plot.set_external_buffer(self.x_vals, self.y_vals, self._x_counter)
+    
+    def _open_plot(self):
+        self.plot.x_vals.clear()
+        self.plot.y_vals.clear()
+        self.plot.start_plotting()
+        self.plot.show()
+
+    # ---------------- feed control ----------------
+    def start(self, poll_rate=0.1, freq=0.02):
+        # Starts collecting dummy data, but doesn't open plot
+        self._running = True
+        self._x_counter = 0
+        self._data_buffer = deque(maxlen=500)
+        self._thread = Thread(target=self._collect_data_loop, args=(poll_rate, freq), daemon=True)
+        self._thread.start()
+
+        # Start a timer to check when data is ready
+        self._enable_timer = QTimer()
+        self._enable_timer.setInterval(200)  # check every 200ms
+        self._enable_timer.timeout.connect(self._check_data_ready)
+        self._enable_timer.start()
+
+    def _check_data_ready(self):
+        if len(self._data_buffer) > 5:  # Wait until a few values are available
+            print("[DEBUG] Buffer filled. Enabling button.")
+            self.button.pushButton.setEnabled(True)
+            self._enable_timer.stop()
+
+    def stop(self):
+        self._running = False
+        if hasattr(self.plot, "stop_data_feed"):
+            self.plot.stop_data_feed()
+        if self._thread:
+            self._thread.join()
+
+    def _loop(self, poll_rate, freq):
+        x = 0
+        while self._running:
+            x += 1
+            val = math.sin(x * freq) * 50 + 50
+
+            self.plot.x_vals.append(x)
+            self.plot.y_vals.append(val)
+            self.plot.update_label_signal.emit(f"{val:.2f}")
+            self.plot.refresh_plot_signal.emit()
+
+            sleep(poll_rate)
+
+    def _collect_data_loop(self, poll_rate, freq):
+        while self._running:
+            self._x_counter += 1
+            val = math.sin(self._x_counter * freq) * 50 + 50
+            self.label.setLabelText(f"{val:.2f}")
+            self._data_buffer.append(val)
+            self.x_vals.append(self._x_counter)
+            self.y_vals.append(val)
+            sleep(poll_rate)
