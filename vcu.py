@@ -476,7 +476,7 @@ class PAndIDGraphicWindow(QWidget):
         self.setStyleSheet("color: white; background-color: #212121;")
 
         tabWindowLayout = QVBoxLayout(self)
-        self.nh3pump = NH3PumpControlScene()
+        self.nh3pump = NH3PumpControlScene(data_manager=data_manager)
         self.nh3vaporizer = NH3VaporizerControlScene()
 
         self.tab_widget = QTabWidget(styleSheet=Stylesheets.TabWidgetStyleSheet())

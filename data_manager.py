@@ -26,7 +26,7 @@ class SystemDataManager(QObject):
         self._temp_data = [deque([0.0] * self._history_len, maxlen=self._history_len) for _ in range(3)]
         self._eStopValue = False
         self._testingFlag = False # Added testingFlag as it's used in can_open_protocol
-        self._last_pressures = [0.0, 0.0, 0.0]
+        self._last_pressures = [0.0, 0.0, 0.0, 0.0, 0.0]
         self._last_temps = [0.0, 0.0, 0.0]
         self._last_pump_feedback = 0.0
         self._last_flow_rate = 0.0
@@ -93,9 +93,9 @@ class SystemDataManager(QObject):
 
     def update_pressure_data(self, values: List[float]):
         """Updates internal pressure data and emits signal."""
-        if len(values) >= 3:
-            scaled_pressures = [values[0] * 30.0, values[1] * 60.0, values[2] * 60.0]
-            for i in range(3):
+        if len(values) >= 5:
+            scaled_pressures = [values[0] * 30.0, values[1] * 60.0, values[2] * 60.0,  values[3] * 60.0,  values[4] * 60.0]
+            for i in range(5):
                 self._ch_data[i].append(scaled_pressures[i])
             self._last_pressures = scaled_pressures
             self.pressure_updated.emit(scaled_pressures)
@@ -303,9 +303,7 @@ class SystemDataManager(QObject):
             if self._can_connected and self._bus:
                 try:
                     await CanOpen.send_can_message(self._bus, 0x191, data,
-                                                   self.eStopValue,
-                                                   False, # is_test_message parameter (assuming not test)
-                                                   self.testingFlag) # test_flag parameter
+                                                   self.eStopValue) # test_flag parameter
                 except Exception as e:
                     self.can_error.emit(f"CAN Send Error (ESV): {str(e)}")
 

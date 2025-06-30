@@ -1,5 +1,6 @@
 
 import math
+import time
 
 from datetime import datetime
 
@@ -47,6 +48,7 @@ from time import sleep
 from PySide6.QtCore import Slot
 from threading import Thread
 from PySide6.QtCore import QRectF
+from data_manager import SystemDataManager
 
 class SchematicHelperFunctions:
 
@@ -451,6 +453,8 @@ class CreateLivePlotWindow(QDialog):
     ):
         super().__init__(parent)
 
+        self._x_counter = 0
+
         self._poll_rate = poll_rate
         
         self.refresh_plot_signal.connect(self.update_plot)
@@ -474,6 +478,7 @@ class CreateLivePlotWindow(QDialog):
         self.ax.set_ylabel(f"{y_label} ({y_unit})")
         self.ax.set_xlabel(f"{x_label} ({x_unit})")
         self.ax.set_ylim(0, 100)
+        self._init_ylim = self.ax.get_ylim() 
         self.ax.set_xlim(0, 100)
         self.ax.grid(True)
 
@@ -514,6 +519,10 @@ class CreateLivePlotWindow(QDialog):
         self.curve.set_data(self.x_vals, self.y_vals)
         if self.x_vals:
             self.ax.set_xlim(max(0, self.x_vals[0]), self.x_vals[-1])
+        if self.y_vals:                               # ← add this block
+            self.ax.relim()                           # recompute data limits
+            self.ax.autoscale_view(scalex=False)
+
         self.canvas.draw_idle()
 
 
@@ -523,7 +532,8 @@ class CreateLivePlotWindow(QDialog):
             self.thread.join()
 
     def closeEvent(self, event):
-        event.ignore()   # hide only
+        self.stop_plotting()   # pause the 100 ms timer
+        event.ignore()         # just hide the window; Qt keeps it alive
         self.hide()
 
     @Slot(str)
@@ -559,7 +569,8 @@ class SensorPlot:
     Keeps everything for one indicator in one object.
     """
 
-    def __init__(self, scene: QGraphicsScene, name: str,
+    def __init__(self, scene: QGraphicsScene, name: str, data_manager: SystemDataManager,
+                 sensor_type: str, sensor_index: int,
                  pos: tuple[int, int], units: str,
                  live: bool = True,  # False → simple history plot
                  color: str = 'r'):
@@ -568,14 +579,44 @@ class SensorPlot:
         self.label = CreatePlotLabel(scene, *pos)
         self.label.setLabelText("--")
 
+        self.data_manager = data_manager
+        self.sensor_type = sensor_type
+        self.sensor_index = sensor_index
+
         x_btn, y_btn = pos[0], pos[1] + 40
         self.button = CreatePlotButton(scene, self._open_plot, "Plot", x_btn, y_btn)
-        self.button.pushButton.setEnabled(False)
+        self.button.pushButton.setEnabled(True)
 
         self._x_counter = 0
         self._data_buffer = deque(maxlen=1000)
         self.x_vals = deque(maxlen=1000)
         self.y_vals = deque(maxlen=1000)
+
+        self._data_buffer = deque(maxlen=1000)
+        self.x_vals = deque(maxlen=1000)
+        self.y_vals = deque(maxlen=1000)
+
+        if sensor_type == "pressure":
+            self.data_manager.pressure_updated.connect(self._on_new_data)
+
+        elif sensor_type == "temperature":
+            self.data_manager.temperature_updated.connect(self._on_new_data)
+
+        elif sensor_type == "pump_feedback":
+            # pump_feedback_updated emits (rpm, flow)
+            self.data_manager.pump_feedback_updated.connect(
+                lambda rpm, _flow: self._on_new_data(rpm)
+            )
+
+        elif sensor_type == "flow_feedback":
+            # pump_feedback_updated emits (rpm, flow)
+            self.data_manager.pump_feedback_updated.connect(
+                lambda _rpm, flow: self._on_new_data(flow)
+            )
+            # …or, if you already have a dedicated flow signal:
+            # self.data_manager.flow_feedback_updated.connect(self._on_new_data)
+
+
 
         # --- pop-up plot window ---
         if live:
@@ -590,30 +631,62 @@ class SensorPlot:
                                          y_label=name,
                                          y_unit=units)
 
-        # --- internal sine-wave generator (replace with real data) ---
-        self._running = False
-        self._thread = None
-
         self.plot.set_external_buffer(self.x_vals, self.y_vals, self._x_counter)
     
+    def _on_new_data(self, value):
+        """
+        Slot called whenever the SystemDataManager emits a new reading.
+        Works whether the signal gives a scalar or a tuple/list.
+        """
+        # --- 1. normalise the incoming value -----------------------------------
+        if isinstance(value, (list, tuple)):
+            # Packet with several readings → pick the one that belongs to me
+            if self.sensor_index >= len(value):
+                return                      # nothing here for this sensor
+            val = value[self.sensor_index]
+        else:
+            val = value                     # simple scalar
+
+        # --- 2. update widgets & buffers ---------------------------------------
+        self._x_counter += 1
+        self.label.setLabelText(f"{val:.2f}")      # update the little label
+
+        self.x_vals.append(self._x_counter)        # X = sample index
+        self.y_vals.append(val)                    # Y = measurement
+
+        # Wake up the live plot (does nothing if the window is hidden)
+        self.plot.update_label_signal.emit(f"{val:.2f}")
+        self.plot.refresh_plot_signal.emit()
+
     def _open_plot(self):
-        self.plot.x_vals.clear()
-        self.plot.y_vals.clear()
-        self.plot.start_plotting()
+        self._reset_view()          # <-- NEW: clear buffers & axes
+        self.plot.start_plotting()  # restart the 100 ms refresh timer
         self.plot.show()
 
-    # ---------------- feed control ----------------
-    def start(self, poll_rate=0.1, freq=0.02):
-        # Starts collecting dummy data, but doesn't open plot
-        self._running = True
-        self._x_counter = 0
-        self._data_buffer = deque(maxlen=500)
-        self._thread = Thread(target=self._collect_data_loop, args=(poll_rate, freq), daemon=True)
-        self._thread.start()
+    def _reset_view(self):
+        """Start a fresh strip-chart for the next ‘Plot’ session."""
+        self.x_vals.clear()
+        self.y_vals.clear()
+        # force the matplotlib axes to forget old limits
+        self.plot.ax.cla()
+        self.plot.ax.set_ylim(*self.plot._init_ylim)
+        self.plot.ax.set_ylabel(self.plot.ax.get_ylabel())   # restore labels
+        self.plot.ax.set_xlabel(self.plot.ax.get_xlabel())
+        self.plot.ax.grid(True)
+        self.plot.curve, = self.plot.ax.plot([], [], 'r-', linewidth=2)
 
-        # Start a timer to check when data is ready
-        self._enable_timer = QTimer()
-        self._enable_timer.setInterval(200)  # check every 200ms
+
+    # ---------------- feed control ----------------
+    def start(self):
+        self._x_counter = 0
+        self._data_buffer.clear()
+        self.x_vals.clear()
+        self.y_vals.clear()
+        self.plot.x_vals.clear()
+        self.plot.y_vals.clear()
+
+        """ self._enable_timer = QTimer()
+        self._enable_timer.setInterval(200)
         self._enable_timer.timeout.connect(self._check_data_ready)
         self._enable_timer.start()
 
@@ -621,34 +694,9 @@ class SensorPlot:
         if len(self._data_buffer) > 5:  # Wait until a few values are available
             print("[DEBUG] Buffer filled. Enabling button.")
             self.button.pushButton.setEnabled(True)
-            self._enable_timer.stop()
+            self._enable_timer.stop() """
 
     def stop(self):
         self._running = False
         if hasattr(self.plot, "stop_data_feed"):
             self.plot.stop_data_feed()
-        if self._thread:
-            self._thread.join()
-
-    def _loop(self, poll_rate, freq):
-        x = 0
-        while self._running:
-            x += 1
-            val = math.sin(x * freq) * 50 + 50
-
-            self.plot.x_vals.append(x)
-            self.plot.y_vals.append(val)
-            self.plot.update_label_signal.emit(f"{val:.2f}")
-            self.plot.refresh_plot_signal.emit()
-
-            sleep(poll_rate)
-
-    def _collect_data_loop(self, poll_rate, freq):
-        while self._running:
-            self._x_counter += 1
-            val = math.sin(self._x_counter * freq) * 50 + 50
-            self.label.setLabelText(f"{val:.2f}")
-            self._data_buffer.append(val)
-            self.x_vals.append(self._x_counter)
-            self.y_vals.append(val)
-            sleep(poll_rate)
