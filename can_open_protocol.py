@@ -27,7 +27,8 @@ class CanOpen:
         cs = cs_dict[size]
         data = [cs, index & 0xFF, (index >> 8) & 0xFF, subindex] + list(value.to_bytes(size, 'little'))
         data += [0x00] * (8 - len(data))
-        msg = can.Message(cob_id, data=data, is_extended_id=False)
+        msg = can.Message(arbitration_id=cob_id, data=data, is_extended_id=False)
+        print(msg)
         can_bus.send(msg)
         # print(f"Sent message: COB-ID=0x{cob_id:X}, Data={data}")
 
@@ -82,25 +83,46 @@ class CanOpen:
         tpdo_map_index = 0x1A00 + (num_can_msgs - 1)
         nvm_index = 0x1010
         mnt_index = 0x1F80
-
         for element in node_ids:
             cob_id = 0x600+element
+            CanOpen.pre_operational(node_ids, can_bus) #pre-operational set
+            time.sleep(1)
             for i in range(num_can_msgs):
                 tpdo_config_index = 0x1800 + i
                 tpdo_map_index = 0x1A00 + i
                 #1 is COB_ID, 2 transmission type, 3 inhibit time, 5 event timer
-                #CanOpen.spo_configure(mnt_index, 0, 0x02,1, can_bus, cob_id ) #pre-operational set
-                CanOpen.spo_configure(tpdo_config_index, 1, 0x80000000 | (0x180 + element), 4, can_bus, cob_id) #disable at index 1
-                CanOpen.spo_configure(tpdo_config_index, 5, 0x0064, 2, can_bus, cob_id) #0x0064 is 100 in dec. event timer set to 100ms
+                base_cob_offset = 0x180 + (i * 0x100) 
+                actual_tpdo_cob_id = base_cob_offset + element 
+                time.sleep(0.1)
+                tpdo_cob_id = 0x80000000 | (0x180 + element + i)
+                CanOpen.spo_configure(tpdo_config_index, 1, actual_tpdo_cob_id, 4, can_bus, cob_id)
+                time.sleep(0.1)
+                CanOpen.spo_configure(tpdo_config_index, 3, 0x0000, 2, can_bus, cob_id)  # No inhibit time
+                time.sleep(0.1)
                 CanOpen.spo_configure(tpdo_map_index, 0, 0x00000000, 1, can_bus, cob_id ) #set msg to 0
+                time.sleep(0.1)
+                start_channel_for_this_tpdo = (i * 4) + 1 
+                current_mapped_channels = 0 
+                
                 for j in range(4):
-                    subindex = j + 1
-                    mapping_entry = (0x6401 << 16) | (subindex << 8) | 0x10
-                    CanOpen.spo_configure(tpdo_map_index, subindex, mapping_entry, 4, can_bus, cob_id) #assign msgs to tpdo
+                    analog_channel_number = start_channel_for_this_tpdo + j 
+                    if analog_channel_number > 16:
+                        break 
+                    mapping_entry = (0x6401 << 16) | (analog_channel_number << 8) | 0x10 
+                    CanOpen.spo_configure(tpdo_map_index, j + 1, mapping_entry, 4, can_bus, cob_id) 
+                    time.sleep(0.1)
+                    current_mapped_channels += 1
+                
+                CanOpen.spo_configure(tpdo_map_index, 0, current_mapped_channels, 1, can_bus, cob_id)   
                 CanOpen.spo_configure(tpdo_map_index, 0, 0x04, 1, can_bus, cob_id ) #set msg to 4
-                CanOpen.spo_configure(tpdo_config_index, 1, 0x00000000 | (0x180 + element), 4, can_bus, cob_id) #re-enable at index 1
-            CanOpen.spo_configure(mnt_index, 0, 0x02,1, can_bus, cob_id ) #pre-operational set
+                time.sleep(0.1)
+                CanOpen.spo_configure(tpdo_config_index, 1,actual_tpdo_cob_id, 4, can_bus, cob_id) #re-enable at index 1
+                time.sleep(0.1)
+                CanOpen.spo_configure(tpdo_config_index, 5, 0x0064, 2, can_bus, cob_id) #0x0064 is 100 in dec. event timer set to 100ms
+                time.sleep(0.1)
+        
             CanOpen.spo_configure(nvm_index, 1, 0x65766173,4, can_bus, cob_id) #save to eeprom
+            time.sleep(0.1)
 
     @staticmethod
     def operational(node_ids, can_bus):
@@ -114,8 +136,41 @@ class CanOpen:
 
         for element in node_ids:
             payload = [0x01, element]
-            print(payload)
             msg = can.Message(arbitration_id=nmt_id, data=payload, is_extended_id=False)
+            print(msg)
+            can_bus.send(msg)
+
+    @staticmethod
+    def pre_operational(node_ids, can_bus):
+        """Set nodes to operational
+
+        Args:
+            node_ids (_type_): Node ID in byte form maybe dec...
+            can_bus (_type_): can bus object i.e can_bus = can.interface.Bus(...)
+        """
+        nmt_id  = 0x0000
+
+        for element in node_ids:
+            payload = [0x80, element]
+            msg = can.Message(arbitration_id=nmt_id, data=payload, is_extended_id=False)
+            print(msg)
+            can_bus.send(msg)
+
+
+    @staticmethod
+    def reset_node(node_ids, can_bus):
+        """Set nodes to operational
+
+        Args:
+            node_ids (_type_): Node ID in byte form maybe dec...
+            can_bus (_type_): can bus object i.e can_bus = can.interface.Bus(...)
+        """
+        nmt_id  = 0x0000
+
+        for element in node_ids:
+            payload = [0x81, element]
+            msg = can.Message(arbitration_id=nmt_id, data=payload, is_extended_id=False)
+            print(msg)
             can_bus.send(msg)
 
     @staticmethod
@@ -203,9 +258,7 @@ class CanOpen:
         return msg
 
     @staticmethod     
-    def generate_outmm_msg(pump_on, pump_speed, 
-                           #esv_n2_on
-                           ):
+    def generate_outmm_msg(pump_on, pump_speed):
 
         if pump_speed < 0:
             pump_speed = 0
@@ -216,33 +269,29 @@ class CanOpen:
 
         raw_out1 = pump_speed* 655
 
-        if pump_on == 1:
-            raw_out2 = 65535
-        else:
-            raw_out2 = 0
+        raw_out2 = CanOpen.digital_to_16bitanalog(pump_on)
 
         return raw_out1, raw_out2
     
     @staticmethod
     def digital_to_16bitanalog(digitalval):
         if  digitalval == 1:
-            output = 0xFF
+            output = 0xFFFF
         elif digitalval == 0:
             output = 0
         else: 
-            print("digital value error!")
+            raise ValueError("digital value error!")
 
         return output
     
     @staticmethod
-    def generic_dout_msg(out1, out2, out3, out4, arbitration_id, can_bus):
+    def generic_dout_msg(out1, out2, out3, out4, arbitration_id):
         aout1 = CanOpen.digital_to_16bitanalog(out1)
         aout2 = CanOpen.digital_to_16bitanalog(out2)
         aout3 = CanOpen.digital_to_16bitanalog(out3)
         aout4 = CanOpen.digital_to_16bitanalog(out4)
         payload = CanOpen.generate_uint_16bit_msg(aout1, aout2, aout3, aout4)
         msg = can.Message(arbitration_id=arbitration_id, is_extended_id=False, data = payload)
-        can_bus.send(msg)
 
     
     @staticmethod
@@ -257,8 +306,8 @@ class CanOpen:
                            Each message will be a dictionary with 'node_id', 'data_type', 'values', and 'timestamp'.
         """
         pt_id = 0x181  # Pressure Transducer CAN ID
-        tc_id_map = {0x182: 2, 0x183: 3, 0x184: 4, 0x185: 5} # Thermocouple CAN IDs mapping (mapping might be unused now)
-        fourtwenty_id = 0x1FE # 4-20mA sensor CAN ID
+        tc_id_map = {0x182, 0x183, 0x184, 0x185} # Thermocouple CAN IDs mapping 
+        fourtwenty_id = {0x1A3, 0x2A3, 0x3A3, 0x4A3} # 4-20mA sensor CAN ID
 
         print("Creating CAN listener...")
 
@@ -278,8 +327,8 @@ class CanOpen:
                 # Prepare a common message dictionary structure
                 parsed_message: Dict[str, Any] = {
                     "node_id": node_id,
-                    "timestamp": datetime.now().isoformat(), # Add a timestamp for consistency
-                    "data_type": None, # Will be set below
+                    "timestamp": datetime.now().isoformat(), 
+                    "data_type": None, 
                     "values": None     # Will be set below
                 }
 
@@ -294,13 +343,11 @@ class CanOpen:
                 elif node_id == fourtwenty_id:
                     signal_data = CanOpen.parse_i_tpdo(msg)
                     parsed_message["data_type"] = '4-20mA'
-                    parsed_message["values"] = signal_data # This will be a dict itself
+                    parsed_message["values"] = signal_data 
                 else:
-                    # If the message ID is not recognized, skip processing or log it
                     # print(f"Unhandled CAN message ID: {hex(node_id)}")
-                    return # Exit if unhandled ID
+                    return 
 
-                # Try to put the structured message into the queue
                 try:
                     data_queue.put_nowait(parsed_message)
                 except asyncio.QueueFull:
@@ -308,75 +355,97 @@ class CanOpen:
                     try:
                         data_queue.get_nowait() # Remove oldest
                         data_queue.put_nowait(parsed_message) # Add new
-                        # print("Queue was full, dropped oldest message.") # Optional debug
+                        # print("Queue was full, dropped oldest message.") 
                     except Exception as e:
                         print(f"Error handling full queue: {e}")
 
-        # Create and return the CAN Notifier, which manages the listener in the asyncio loop
         return can.Notifier(bus, [_AsyncListener()], loop=asyncio.get_running_loop())
 
-    
+
     @staticmethod
-    async def send_can_message(can_bus: can.Bus, can_id: int, data: List[int], eStopFlag):
-        """nonblocking can_sender 
+    async def send_outputs(can_bus, eStopFlag, pump_state, esv_state):
+        out_minimodul_id = 0x600
+        out_minimod_id = 0x180
+        if eStopFlag:
+            msg_outmm = can.Message(arbitration_id=out_minimodul_id, data=[00]*8, is_extended_id=False)
+            msg_minimod = can.Message(arbitration_id=out_minimod_id, data=[00]*8, is_extended_id=False)
 
-        Args:
-            can_bus (can.Bus): can bus
-            can_id (int): can address of target
-            data (List[int]): msg
-
-        Raises:
-            ValueError: exception error
-        """
-        
-        if (eStopFlag) :
-            msg = can.Message(arbitration_id=can_id, data=[0x00]*8, is_extended_id=False)
         else:
-            if len(data) > 8:
-                raise ValueError("CAN data cannot exceed 8 bytes")
-            msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=False)
+            speed = max(0.0, min(100.0, pump_state[1] if pump_state[1] is not None else 0.0))
+            raw1, raw2 = CanOpen.generate_outmm_msg(pump_state[0], speed)
+            data_minimodul = CanOpen.generate_uint_16bit_msg(int(raw1), int(raw2), 0, 0)
+            msg_outmm = can.Message(arbitration_id=out_minimodul_id, data=data_minimodul, is_extended_id=False)
+            msg_minimod = CanOpen.generic_dout_msg(esv_state[0], esv_state[1], 0 ,0, out_minimod_id)
+        try:
+            can_bus.send(msg_outmm)
+            can_bus.send(msg_minimod)
+        except Exception as e:
+                print("CAN Send Error (Pump): {str(e)}")
 
-            try:
-                can_bus.send(msg)
-                #print(f"[SEND] Sent CAN message: COB-ID=0x{can_id:X}, Data={data}")
-            except can.CanError as e:
-                print(f"[ERROR] Failed to send CAN message: {e}")
+
+    
+    # @staticmethod
+    # async def send_can_message(can_bus: can.Bus, can_id: int, data: List[int], eStopFlag):
+    #     """nonblocking can_sender 
+
+    #     Args:
+    #         can_bus (can.Bus): can bus
+    #         can_id (int): can address of target
+    #         data (List[int]): msg
+
+    #     Raises:
+    #         ValueError: exception error
+    #     """
+        
+
+
+    #     if len(data) > 8:
+    #         raise ValueError("CAN data cannot exceed 8 bytes")
+    #     msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=False)
+
+    #     try:
+    #         can_bus.send(msg)
+    #         #print(f"[SEND] Sent CAN message: COB-ID=0x{can_id:X}, Data={data}")
+    #     except can.CanError as e:
+    #         print(f"[ERROR] Failed to send CAN message: {e}")
 
         
 
 def main():
 
-    # === CONFIGURATION ===
     channel = "PCAN_USBBUS1"
-    #bustype = "pcan"
-    bustype = "virtual"
+    bustype = "pcan"
     bitrate = 500e3
-    node_ids = [0x23]                # List of CANopen node IDs to configure
-    num_tpdos = 3                    # How many TPDOs to setup per node
+    node_ids = [0x23]          # List of CANopen node IDs to configure
+    num_tpdos = 4                    # How many TPDOs to setup per node
 
-    # === SETUP CAN BUS ===
     try:
         can_bus = can.interface.Bus(channel=channel, bustype=bustype, bitrate=bitrate)
     except Exception as e:
-        print(f"[ERROR] Failed to open CAN bus: {e}")
+        print(f"Failed to open CAN bus: {e}")
         return
 
-    print("[INFO] CAN bus initialized")
+    print("CAN bus initialized")
 
-    # === COMMISSION TPDOs ===
     try:
         CanOpen.commission_adc(node_ids, can_bus, num_tpdos)
-        print("[INFO] TPDOs successfully configured")
+        print(" TPDOs successfully configured")
     except Exception as e:
-        print(f"[ERROR] TPDO configuration failed: {e}")
+        print(f"TPDO configuration failed: {e}")
         return
+    time.sleep(1)
+    try:
+        CanOpen.reset_node(node_ids, can_bus)
+        print("Sent NMT reset node command")
+    except Exception as e:
+        print(f"Failed to set operational mode: {e}")
 
-    # === SEND NMT TO ENTER OPERATIONAL STATE ===
+    time.sleep(1)
     try:
         CanOpen.operational(node_ids, can_bus)
-        print("[INFO] Sent NMT operational command")
+        print("Sent NMT operational command")
     except Exception as e:
-        print(f"[ERROR] Failed to set operational mode: {e}")
+        print(f"Failed to set operational mode: {e}")
 
 if __name__ == "__main__":
     main()
