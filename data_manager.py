@@ -413,18 +413,43 @@ class SystemDataManager(QObject):
                 
                 valve_state= [self._commanded_esv_n2_on, 0,0,0]
 
-                system_shutdown = self._eStopValue or self.interlock_flag
-                
-                if self._can_connected and self._bus:
-                    await CanOpen.send_outputs(self._bus, system_shutdown, pump_state, valve_state)
+            # Generate raw CAN message data for pump control
+            raw1, raw2 = CanOpen.generate_outmm_msg(pump_on, speed)
+            data = CanOpen.generate_uint_16bit_msg(int(raw1), int(raw2), 0, 0)
 
-            except asyncio.CancelledError:
-                print("Sender task cancelled.")
-                break
-            except Exception as e:
-                self.can_error.emit(f"CAN Send Error (Sender Task): {str(e)}")
-                await asyncio.sleep(0.1)
+            if self._can_connected and self._bus:
+                try:
+                    # Pass eStopValue and testingFlag from the data manager
+                    await CanOpen.send_can_message(self._bus, 0x600, data,
+                                                   self.eStopValue)
+                except Exception as e:
+                    self.can_error.emit(f"CAN Send Error (Pump): {str(e)}")
 
+    async def _esv_sender_task_loop(self):
+        """
+        An asynchronous task for continuously sending CAN messages to control an ESV (Emergency Shut-off Valve)
+        based on the E-STOP state.
+        This assumes the ESV state is directly tied to the E-STOP.
+        """
+        while True:
+            await asyncio.sleep(0.1) # Send ESV command less frequently, e.g., every 100ms
+
+            # The ESV state is derived from the eStopValue.
+            # Assuming True eStopValue means ESV should be 'closed' (safe state)
+            # and False means ESV is 'open' (normal operation).
+            if self.eStopValue:
+                # E-STOP active, close valve (example data)
+                data = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+            else:
+                # E-STOP inactive, open valve (example data)
+                data = [0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+
+            if self._can_connected and self._bus:
+                try:
+                    await CanOpen.send_can_message(self._bus, 0x191, data,
+                                                   self.eStopValue) # test_flag parameter
+                except Exception as e:
+                    self.can_error.emit(f"CAN Send Error (ESV): {str(e)}")
 
     def close_can_connection(self):
         """
