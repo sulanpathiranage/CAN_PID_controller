@@ -176,7 +176,10 @@ class PumpControlWidget(QWidget):
         form_layout.addWidget(QLabel("Pump State:"), 0, 0)
         form_layout.addWidget(self.pump_on_checkbox, 0, 1, 1, 2)
 
-        self.speed_slider = QSlider(Qt.Orientation.Horizontal, value=0, range=(0, 100))
+        #self.speed_slider = QSlider(Qt.Orientation.Horizontal, value=0, range=(0, 100))
+        self.speed_slider = QSlider(Qt.Orientation.Horizontal)  # constructor: just orientation (+ optional parent)
+        self.speed_slider.setRange(0, 100)                      # min, max
+        self.speed_slider.setValue(0)                           # starting value
         self.speed_entry = QLineEdit("0", fixedWidth=50, alignment=Qt.AlignmentFlag.AlignCenter)
 
         form_layout.addWidget(QLabel("Speed:"), 1, 0)
@@ -221,8 +224,8 @@ class SensorDisplayWidget(QWidget):
 
         layout.addWidget(QLabel("Pressure Sensors", styleSheet=Stylesheets.LabelStyleSheet()))
         self.pressure_labels = [
-            QLabel(f"PT140{i+1}: -- psi", alignment=Qt.AlignmentFlag.AlignLeft, styleSheet=Stylesheets.LabelStyleSheet())
-            for i in range(3)
+            QLabel(f"{name}: -- psi", alignment=Qt.AlignmentFlag.AlignLeft, styleSheet=Stylesheets.LabelStyleSheet())
+            for name in self.data_manager.pressure_sensor_names
         ]
         for label in self.pressure_labels:
             layout.addWidget(label)
@@ -249,14 +252,16 @@ class SensorDisplayWidget(QWidget):
 
     def update_pressures(self, pressures: List[float]):
         for i, pressure in enumerate(pressures):
-            self.pressure_labels[i].setText(f"PT140{i+1:02d}: {pressure:.1f} psi")
+            name = self.data_manager.pressure_sensor_names[i]
+            self.pressure_labels[i].setText(f"{name}: {pressure:.1f} psi")
 
     def update_temperatures(self, temperatures: List[float]):
         for i, temp in enumerate(temperatures):
-            if i == 2:
-                self.temperature_labels[i].setText(f"Heater: {temp:.1f} °C")
+            if i < len(self.temperature_labels):
+                sensor_name = self.data_manager.temperature_sensor_names[i]
+                self.temperature_labels[i].setText(f"{sensor_name}: {temp:.1f} °C")
             else:
-                self.temperature_labels[i].setText(f"T0{i+1}: {temp:.1f} °C")
+                print(f"Warning: Received extra temperature reading {temp:.1f} °C with no matching label.")
 
 
 class PIDControlWidget(QWidget):
@@ -375,7 +380,7 @@ class PumpControlWindow(QWidget):
         scroll_area.setFixedWidth(320)
         main_layout.addWidget(scroll_area)
         main_layout.addWidget(self.plot_canvas, stretch=1)
-        main_layout.addWidget(self.permanentRightHandDisplay) # Corrected typo, was permanentRightHandControl
+        main_layout.addWidget(self.permanentRightHandControl) # Corrected typo, was permanentRightHandControl
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._update_gui_and_can_commands)
@@ -472,7 +477,7 @@ class PAndIDGraphicWindow(QWidget):
         self.setStyleSheet("color: white; background-color: #212121;")
 
         tabWindowLayout = QVBoxLayout(self)
-        self.nh3pump = NH3PumpControlScene()
+        self.nh3pump = NH3PumpControlScene(data_manager)
         self.nh3vaporizer = NH3VaporizerControlScene()
 
         self.tab_widget = QTabWidget(styleSheet=Stylesheets.TabWidgetStyleSheet())

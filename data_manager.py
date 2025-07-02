@@ -19,9 +19,10 @@ class SystemDataManager(QObject):
     pressure_fault_detected = pyqtSignal(int, list) # channel_index, [lw, ls, hw, hs]
     temperature_fault_detected = pyqtSignal(int, list) # channel_index, [lw, ls, hw, hs]
 
-    pt_designators = ["PT10110", "PT10120", "PT10130"]
-    tc_designators = ["TI10111","TI10115","TI10116","TI10117", "TI01","TI10121", "TI10119"]
-    ft_designators = ["FT1024"]
+    # Designators for pressure, temperature, and flow sensors
+    pt_designators = ["PT10110", "PT10120", "PT10130", "PT10134", "PTC10126"]
+    tc_designators = ["TI10111","TI10115","TI10116","TI10119","HEATER"]
+    ft_designators = ["FI10124", "FIC10124"]
 
     def __init__(self, history_len: int = 100):
         super().__init__()
@@ -69,7 +70,8 @@ class SystemDataManager(QObject):
                 print(f"Warning: _temp_data does not have enough deques for {designator}")
 
         if self.ft_designators:
-            self._sensor_data_sources[self.ft_designators[0]] = "_last_flow_rate" 
+            for designator in self.ft_designators:
+                self._sensor_data_sources[designator] = "_last_flow_rate"
 
 
     @property
@@ -169,12 +171,16 @@ class SystemDataManager(QObject):
         """Updates internal pressure data and emits signal."""
         if len(values) < len(self.pt_designators):
             print(f"Warning: Pressure data received with unexpected length: {len(values)}. Expected {len(self.pt_designators)}.")
-            return
+            # Pad with repeated value of PT10120 (index 1) or a constant
+            padded = values + [values[1]] * (len(self.pt_designators) - len(values))
+            values = padded
 
         scaled_pressures = [
             values[0] * 30.0, # Example scaling
             values[1] * 60.0, # Example scaling
             values[2] * 60.0, # Example scaling
+            values[3] * 60.0, # Example scaling
+            values[4] * 60.0  # Example scaling
         ]
 
         # Update _last_pressures (latest single value) and append to history deques
@@ -192,7 +198,8 @@ class SystemDataManager(QObject):
         """Updates internal temperature data and emits signal."""
         if len(values) < len(self.tc_designators):
             print(f"Warning: Temperature data received with unexpected length: {len(values)}. Expected {len(self.tc_designators)}.")
-            return
+            last_known = values[-1] if values else 25.0
+            values = values + [last_known] * (len(self.tc_designators) - len(values))
 
         incoming_temps = values[:len(self.tc_designators)]
         is_invalid_reading = all(t == self.INVALID_TEMP_MARKER for t in incoming_temps)
@@ -333,21 +340,21 @@ class SystemDataManager(QObject):
         no_lo_limit = -1e6
 
 
-        pt10110_val = self.get_latest_sensor_value("PT10110")
-        pt10120_val = self.get_latest_sensor_value("PT10120")
+        PT10110_val = self.get_latest_sensor_value("PT10110")
+        PT10120_val = self.get_latest_sensor_value("PT10120")
         ti10119_val = self.get_latest_sensor_value("TI10119") 
-        ft1024_val = self.get_latest_sensor_value("FT1024")
+        fi10124_val = self.get_latest_sensor_value("FI10124")
 
 
 
 
-        interlock1 = FaultManager.limit_fault(pt10110_val, self._bar_to_psi(2), no_lo_limit, self._bar_to_psi(7), no_hi_limit) 
-        interlock2 = FaultManager.limit_fault(pt10120_val, self._bar_to_psi(15), no_lo_limit, self._bar_to_psi(19), self._bar_to_psi(20))
+        interlock1 = FaultManager.limit_fault(PT10110_val, self._bar_to_psi(2), no_lo_limit, self._bar_to_psi(7), no_hi_limit) 
+        interlock2 = FaultManager.limit_fault(PT10120_val, self._bar_to_psi(15), no_lo_limit, self._bar_to_psi(19), self._bar_to_psi(20))
         if ti10119_val == self.INVALID_TEMP_MARKER:
             interlock3 = [False, False, False, False] 
         else:
             interlock3 = FaultManager.limit_fault(ti10119_val, 47, 45, 55, 60) 
-        interlock4 = FaultManager.limit_fault(ft1024_val, 25, 20, 675, no_hi_limit) 
+        interlock4 = FaultManager.limit_fault(fi10124_val, 25, 20, 675, no_hi_limit) 
 
         self.interlock_flag = (
             interlock1[1] or interlock1[3] or
@@ -404,12 +411,12 @@ class SystemDataManager(QObject):
                 speed = max(0.0, min(100.0, float(speed if speed is not None else 0.0)))
                 pump_state = [self._commanded_pump_on, speed]
                 
-                esv_state= [self._commanded_esv_n2_on, 0]
+                valve_state= [self._commanded_esv_n2_on, 0,0,0]
 
                 system_shutdown = self._eStopValue or self.interlock_flag
                 
                 if self._can_connected and self._bus:
-                    await CanOpen.send_outputs(self._bus, system_shutdown, pump_state, esv_state)
+                    await CanOpen.send_outputs(self._bus, system_shutdown, pump_state, valve_state)
 
             except asyncio.CancelledError:
                 print("Sender task cancelled.")
