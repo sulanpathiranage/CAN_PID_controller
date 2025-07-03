@@ -34,11 +34,7 @@ class NH3PumpControlScene(QWidget):
 
         #Assuming valve is closed initially
         self.esv10401ValveState = False
-<<<<<<< HEAD
         self.fvValveState = False
-=======
-        self.blueValveState = False
->>>>>>> 32954a78b8447ea5c4419a1acc69bcdc1bc05495
 
         #Create Layout
         verticalLayout = QVBoxLayout()
@@ -56,13 +52,8 @@ class NH3PumpControlScene(QWidget):
 
         sensor_defs = [
             # name, type, index, position, units, live_plot
-<<<<<<< HEAD
             ("TI10117", "temperature", 0, (-150, 350), "°C", True),
             ("PI10118", "pressure",   0, (-50, 350),   "bar", True),
-=======
-            ("TI10117", "temperature", 0, (-240, 210), "°C", True),
-            ("PI10118", "pressure",   0, (10, 210),   "bar", True),
->>>>>>> 32954a78b8447ea5c4419a1acc69bcdc1bc05495
             ("PI10120", "pressure",    1, (160, -190), "bar", True),
             ("TI10121", "temperature", 1, (310, -190), "°C", True),
             ("FI10124", "flow_feedback", 0, (810, -190), "L/min", True),
@@ -72,16 +63,13 @@ class NH3PumpControlScene(QWidget):
             ("TI01",    "temperature", 3, (350, 260), "°C", True),
             ("FIC10124","flow_feedback", 1, (700, 160), "L/min", True),
             ("HEATER",  "temperature", 4, (460, 50), "°C", True),
-            ("PI10134", "pressure", 3, (400, -490), "bar", True),
-            ("PIC10126", "pressure", 4, (600, -490), "bar", True),
-<<<<<<< HEAD
+            ("PI10134", "pressure", 3, (400, -440), "bar", True),
+            ("PIC10126", "pressure", 4, (600, -440), "bar", True),
             ("FIC10106", "flow_feedback", 2, (-575, -330), "L/min", True),
             ("TI10111", "temperature", 5, (-625, -75), "°C", True),
             ("PI10120", "pressure", 5, (-525, -75), "bar", True),
             ("TI10115", "temperature", 6, (-480, 130), "°C", True),
             ("TI10116", "temperature", 7, (-480, 300), "°C", True),
-=======
->>>>>>> 32954a78b8447ea5c4419a1acc69bcdc1bc05495
         ]
 
         for name, sensor_type, index, pos, units, live in sensor_defs:
@@ -126,13 +114,8 @@ class NH3PumpControlScene(QWidget):
         #Create Labels
         self.esv10401Label = CreatePlotLabel(self.systemControlScene, -750, -325)
         self.esv10401Label.setLabelText("CLOSED")
-<<<<<<< HEAD
         self.fvValveLabel = CreatePlotLabel(self.systemControlScene, 725, -60)
         self.fvValveLabel.setLabelText("CLOSED")
-=======
-        self.blueValveLabel = CreatePlotLabel(self.systemControlScene, 725, -60)
-        self.blueValveLabel.setLabelText("CLOSED")
->>>>>>> 32954a78b8447ea5c4419a1acc69bcdc1bc05495
         self.heaterSetPointLabel = CreatePlotLabel(self.systemControlScene, 360, 50)
         self.heaterSetPointLabel.setLabelText("Set Point")
         self.heaterSetPointLabel.setLabelColorGreen()
@@ -141,30 +124,19 @@ class NH3PumpControlScene(QWidget):
         self.heatertempLabel.setLabelColorGreen()
 
         # Create Plot buttons
-<<<<<<< HEAD
         self.esv10401Button = CreatePlotButton(self.systemControlScene, lambda: self.toggleValve(self.esv10401Label, 'esv10401ValveState'), "Toggle", -750, -285)
         self.fvValveButton = CreatePlotButton(self.systemControlScene, lambda: self.toggleValve(self.fvValveLabel, 'fvValveState'), "Toggle", 725, -25)
-=======
-        self.esv10401Button = CreatePlotButton(self.systemControlScene, self.toggleEsv10401Valve, "Toggle", -290, -100)
-        self.blueValveButton = CreatePlotButton(self.systemControlScene, self.toggleBlueValve, "Toggle", 725, -25)
->>>>>>> 32954a78b8447ea5c4419a1acc69bcdc1bc05495
 
         #Add Coordinate grid
         SchematicHelperFunctions.AddCoordinateGrid(self.systemControlScene)
 
         #Add Components to scene
-<<<<<<< HEAD
         SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 50, 155, 25, "HV123\nL119-PID-101", -905, 125)  #NH3 WALL SUPPLY
-        SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 20, 120, 10, "HV115\nL119-PID-101", -250, -550)
-=======
-        SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 40, 120, 20, "HV123\nL119-PID-101", -520, 0)  #NH3 WALL SUPPLY
-        SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 20, 120, 10, "HV115\nL119-PID-101", -250, -280)
->>>>>>> 32954a78b8447ea5c4419a1acc69bcdc1bc05495
-        SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 20, 120, 10, "CHEM VENT", 905, -280)
-        SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 40, 120, 20, "CHEM VENT", 900, 50)
-        SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 40, 120, 20, "CHEM VENT", 900, 325)
+        SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 50, 155, 25, "HV115\nL119-PID-101", -600, -475)
+        SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 26, 125, 13, "CHEM VENT", 905, -250)
+        SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 26, 125, 13, "CHEM VENT", 905, 40)
+        SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 26, 125, 13, "CHEM VENT", 905, 315)
 
-<<<<<<< HEAD
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "ESV\n10401", -700, -250)
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "PRV\n01", 150, 100)
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "P1\n01", 50, -150)
@@ -175,25 +147,15 @@ class NH3PumpControlScene(QWidget):
 
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10117", -150, 300)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10118", -50, 300)
-=======
-        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "ESV\n10401", -350, -150)
-        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "PRV\n01", 150, 100)
-        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "P1\n01", 50, -150)
-        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "PSV\n10402", 600, 100)
-
-        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10117", -150, 200)
-        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10118", -50, 200)
->>>>>>> 32954a78b8447ea5c4419a1acc69bcdc1bc05495
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10120", 200, -100)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10121", 300, -100)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "FIC", "10124", 700, 100)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "FI", "10124", 800, -100)
-        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10134", 400, -400)
-        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PIC", "10126", 600, -400)
+        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10134", 400, -350)
+        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PIC", "10126", 600, -350)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "01", 400, 200)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10122", 550, -100)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10123", 600, -100)
-<<<<<<< HEAD
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "FIC", "10106", -550, -250)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10120", -500, 0)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10111", -600, 0)
@@ -209,35 +171,18 @@ class NH3PumpControlScene(QWidget):
         SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=-675, yPos=-150, size=20, label="ESV 10401")
         SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=-475, yPos=-150, size=20, label="FV 10106")
         SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=-375, yPos=-150, size=20, label="SV 10107")
-=======
-
-        SchematicHelperFunctions.CreateLabeledBox(self.systemControlScene, 200, 200, "PUMP SPEED", -100, -50)
-        SchematicHelperFunctions.CreateLabeledBox(self.systemControlScene, 180, 180, "HEATER", 360, -50)
-
-        SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=750, yPos=30, size=20, label="Valve")
->>>>>>> 32954a78b8447ea5c4419a1acc69bcdc1bc05495
 
         #Adding lines to scene
         #For Labels the X coordinate of line is Xcoord(Label) + width, Y coord is YCoord(Label) - height/2
         #For circles and tagged circles radius+Xcoord or radius + YCoord is center of circle, edge is diameter + XCoord or diameter + YCoord
-<<<<<<< HEAD
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -600, -260, 910, -260, 2) # CONNECTION LINE FROM ESV 10401 to CHEM VENT
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -600, -260, -600, -150, 2)# CONNECTION LINE from CHEM VENT to ESV 10401 and FV branch
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -375, -200, -375, -150, 2)# SV 10107 to ESV 10401 and FV branch
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -475, -200, -475, -150, 2)# FV 10106 to ESV 10401 and FV branch
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -525, -200, -525, -150, 2)# FIC 10106 to ESV 10401 and FV branch
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -675, -200, -675, -150, 2)# ESV 10401 to CHEM VENT and FV branch
-=======
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -400, -20, -150, -20, 2)  # NH3 WALL SUPPLY Label to TI 10401
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -150, -20, -150, -290, 2)  # NH3 WALL SUPPLY Label to PI 10134
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -150, -20, -150, 200, 2)  # NH3 WALL SUPPLY Label to TI 10401
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -150, 175,  -25, 175, 2)  # TI 10401 to PT 10401
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -25, 200, -25, 150, 2)    # PT 10401 to Vendor Package
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -325, -100, -325, -20, 2) # ESV to NH3 WALL SUPPLY Label
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -150, -290, 910, -290, 2) # NH3 WALL SUPPLY Label to PI 10134
->>>>>>> 32954a78b8447ea5c4419a1acc69bcdc1bc05495
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 900, -290, 900, 30, 2)    # CHEM VENT TO CHEM VENT
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 100, 30, 920, 30, 2)      # Vendor Package to Water Drain
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 900, -260, 900, 30, 2)    # UPPER CHEM VENT to LOWER CHEM VENT
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 100, 30, 910, 30, 2)      # Vendor Package to Water Drain
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 225, -50, 225, 30, 2)     # PT 10402 to Vendor Package and Water Drain Line
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 325, -50, 325, 30, 2)     # TI 10402 to Vendor Package and Water Drain Line
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 100, 125, 150, 125, 2)    # Vendor Package to PRV 01
@@ -246,13 +191,12 @@ class NH3PumpControlScene(QWidget):
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 625, -50, 625, 30, 2)     # PI 10123 to Vendor Package and Water Drain Line
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 825, -50, 825, 30, 2)     # FI 10124 to Vendor Package and Water Drain Line
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 675, 30, 675, 300, 2)     # Vendor Package and Water Drain Line to PSV 10402
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 675, 300, 920, 300, 2)    # to NH3 CHEM VENT
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 675, 300, 910, 300, 2)    # to NH3 CHEM VENT
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 675, 125, 650, 125, 2)    # PSV 10402 to NH3 CHEM VENT
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 700, 30, 700, 100, 2)     # PSV 10402 to TT 01
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 425, 130, 425, 200, 2)    # Heater to TT 01
-<<<<<<< HEAD
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 425, -350, 425, -290, 2)  # PI 10134 to CHEM VENT
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 625, -350, 625, -290, 2)  # PIC 10126 to CHEM VENT
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 425, -300, 425, -260, 2)  # PI 10134 to CHEM VENT LINE
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 625, -300, 625, -260, 2)  # PIC 10126 to CHEM VENT
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -200, 250, 0, 250, 2)     # CHILLER E-10114 to TI 10117 and PI 10118
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 0, 250, 0, 150, 2)        # TI 10117 and PI 10118 to PUMP SPEED VENDOR PACKAGE
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -250, 150, -250, 100, 2)  # CHILLER E-10114 to TI 10111 and PI 10120
@@ -267,11 +211,8 @@ class NH3PumpControlScene(QWidget):
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -575, 50, -575, 100, 2)   # TI 10111 to SV 10107
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -300, 100, -300, -150, 2) # TI 10111 and PI 10120 to SV 10107
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -300, -150, -800, -150, 2)# SV 10107 to N2 CYLINDER
-=======
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 425, -350, 425, -290, 2)     # PI 10134 to CHEM VENT
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 625, -350, 625, -290, 2)    # PIC 10126 to CHEM VENT
-  
->>>>>>> 32954a78b8447ea5c4419a1acc69bcdc1bc05495
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -450, -500, 900, -500, 2) # HV115 L-119-PID-101 to CHEM VENT LINE
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 900, -500, 900, -220, 2) # N2 CYLINDER to CHEM VENT LINE
         self.systemControlView.scale(0.9, 0.9)
 
         #Add Components to Layout
@@ -289,36 +230,6 @@ class NH3PumpControlScene(QWidget):
         else :
             SchematicHelperFunctions.RemoveCoordinateGrid(self.systemControlScene)
 
-<<<<<<< HEAD
-=======
-    """
-    UI-slot for the ESV-10401 valve toggle button.
-
-    Delegates to the generic `toggleValve()` helper, which:
-        • flips the boolean   self.esv10401ValveState
-        • updates the label’s text  (“OPEN” / “CLOSED”)
-        • changes the label’s colour (green / red)
-
-    Keeping this wrapper means the button signal can stay
-    readable (“clicked → toggleEsv10401Valve”) while the
-    common logic lives in one place.
-    """
-    def toggleEsv10401Valve(self):
-        self.toggleValve(self.esv10401Label, 'esv10401ValveState')
-
-    """
-    UI-slot for the downstream “blue” valve.
-
-    Behaviour is identical to `toggleEsv10401Valve`, but it
-    works on its own label widget and internal state flag
-    (`blueValveState`).  All the heavy lifting is still done
-    by `toggleValve()`.
-    """
-    def toggleBlueValve(self):
-        self.toggleValve(self.blueValveLabel, 'blueValveState')
-
-
->>>>>>> 32954a78b8447ea5c4419a1acc69bcdc1bc05495
     def toggleValve(self, label, current_state_attr):
         current_state = getattr(self, current_state_attr)
         if current_state:

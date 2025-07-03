@@ -411,19 +411,19 @@ class SystemDataManager(QObject):
                 speed = max(0.0, min(100.0, float(speed if speed is not None else 0.0)))
                 pump_state = [self._commanded_pump_on, speed]
                 
-                valve_state= [self._commanded_esv_n2_on, 0,0,0]
+                esv_state= [self._commanded_esv_n2_on, 0]
 
-            # Generate raw CAN message data for pump control
-            raw1, raw2 = CanOpen.generate_outmm_msg(pump_on, speed)
-            data = CanOpen.generate_uint_16bit_msg(int(raw1), int(raw2), 0, 0)
+                system_shutdown = self._eStopValue or self.interlock_flag
 
-            if self._can_connected and self._bus:
-                try:
-                    # Pass eStopValue and testingFlag from the data manager
-                    await CanOpen.send_can_message(self._bus, 0x600, data,
-                                                   self.eStopValue)
-                except Exception as e:
-                    self.can_error.emit(f"CAN Send Error (Pump): {str(e)}")
+                if self._can_connected and self._bus:
+                    await CanOpen.send_outputs(self._bus, system_shutdown, pump_state, esv_state)
+
+            except asyncio.CancelledError:
+                print("Sender task cancelled.")
+                break
+            except Exception as e:
+                self.can_error.emit(f"CAN Send Error (Sender Task): {str(e)}")
+                await asyncio.sleep(0.1)
 
     async def _esv_sender_task_loop(self):
         """
