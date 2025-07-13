@@ -40,12 +40,10 @@ class Stylesheets:
         
         QPushButton:hover {
             background-color: #d65555;
-            transform: translateY(-1px);
         }
         
         QPushButton:pressed {
             background-color: #b33838;
-            transform: translateY(1px);
         }
         
         QPushButton:disabled {
@@ -127,6 +125,18 @@ class Stylesheets:
         }
         """
         return plotLabelStyle
+    
+    def LabelStyleYellow():
+        plotLabelStyle = """
+        QLabel {
+            background-color: #FFDE21;  /* yellow */
+            color: white;               /* White text */
+            font-size: 18px;            /* Large text */
+            border-radius: 10px;        /* Rounded corners */
+            padding: 6px
+        }
+        """
+        return plotLabelStyle
 
     def LineEditStyleSheet():
         lineEditStyle = ""
@@ -197,65 +207,61 @@ class Stylesheets:
             """
         return checkBoxStyle
     
+    @staticmethod
     def GraphicsViewStyleSheet():
-        graphicsViewStyle = """
-            QGraphicsView {
-                background-color: #f9f9f9;
-                border-radius: 4px;
-                border: 1px solid #ccc;
-            }
+        return """
+        QGraphicsView {
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
 
-            QScrollBar:horizontal {
-                background: #f9f9f9;  /* Avoid leaking background */
-                margin: 0px;
-                border-bottom-left: 2px;
-            }
+        /* Horizontal scroll‑bar */
+        QScrollBar:horizontal {
+            background: #f9f9f9;
+            margin: 0;
+            border-bottom-left-radius: 2px;
+        }
 
-            QScrollBar:vertical {
-                background: #f9f9f9;  /* Avoid leaking background */
-                margin: 0px;
-                border-top-right: 2px;
-            }
+        /* Vertical scroll‑bar */
+        QScrollBar:vertical {
+            background: #f9f9f9;
+            margin: 0;
+            border-top-right-radius: 2px;
+            width: 8px;
+        }
 
-            QScrollBar::handle:horizontal,
-            QScrollBar::handle:vertical {
-                background: #444444;
-                border-radius: 4px; /* Visual roundness */
-                min-height: 20px;
-                min-width: 20px;
-            }
+        /* Scroll‑bar handle */
+        QScrollBar::handle:horizontal,
+        QScrollBar::handle:vertical {
+            background: #444;
+            border-radius: 4px;
+            min-width: 20px;
+            min-height: 20px;
+        }
 
-            QScrollBar::handle:horizontal:hover,
-            QScrollBar::handle:vertical:hover {
-                background: #666666;
-            }
+        QScrollBar::handle:horizontal:hover,
+        QScrollBar::handle:vertical:hover {
+            background: #666;
+        }
 
-            QScrollBar::add-line:horizontal,
-            QScrollBar::sub-line:horizontal,
-            QScrollBar::add-line:vertical,
-            QScrollBar::sub-line:vertical {
-                background: none;
-                border: none;
-                width: 0px;
-                height: 0px;
-            }
+        /* Remove the arrows */
+        QScrollBar::add-line,
+        QScrollBar::sub-line {
+            background: none;
+            border: none;
+            width: 0;
+            height: 0;
+        }
 
-            QScrollBar::add-page:horizontal,
-            QScrollBar::sub-page:horizontal,
-            QScrollBar::add-page:vertical,
-            QScrollBar::sub-page:vertical {
-                background: none;
-            }
+        QScrollBar::add-page,
+        QScrollBar::sub-page {
+            background: none;
+        }
 
-            QScrollBar:vertical {
-                width: 8px;
-            }
-
-            QScrollBar:horizontal {
-                height: 8px;
-            }
+        QScrollBar:horizontal { height: 8px; }
         """
-        return graphicsViewStyle
+
     
     def GenericScrollAreaStyleSheet():
         genericScrollAreaStyleSheet = """

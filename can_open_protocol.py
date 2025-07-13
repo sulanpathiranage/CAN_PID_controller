@@ -4,9 +4,34 @@ import time
 import asyncio
 from datetime import datetime
 from typing import List, Dict, Any
+from collections import defaultdict
+import struct
 
+
+# def log_row_to_csv(filename: str, row: Dict[str, Any]) -> None:
+#     """create csv
+#     log_row_to_csv("can_reader.csv", parsed_message)
+
+#     Args:
+#         filename (str): string of csv filename
+#         row (Dict[str, Any]): str is header, value is col data
+#     """
+#     new_df = pd.DataFrame([row])
+
+#     if os.path.isfile(filename):
+#         df = pd.read_csv(filename)
+
+#         df = df.reindex(columns=df.columns.union(new_df.columns))
+#         new_df = new_df.reindex(columns=df.columns)
+
+#         df = pd.concat([df, new_df], ignore_index=True)
+#     else:
+#         df = new_df
+
+    # df.to_csv(filename, index=False)
 
 class CanOpen:
+    timeout_timer = time.time()
 
     @staticmethod
     def spo_configure(index, subindex, value, size, can_bus, cob_id):
@@ -28,7 +53,7 @@ class CanOpen:
         data = [cs, index & 0xFF, (index >> 8) & 0xFF, subindex] + list(value.to_bytes(size, 'little'))
         data += [0x00] * (8 - len(data))
         msg = can.Message(arbitration_id=cob_id, data=data, is_extended_id=False)
-        print(msg)
+        # print(msg)
         can_bus.send(msg)
         # print(f"Sent message: COB-ID=0x{cob_id:X}, Data={data}")
 
@@ -173,6 +198,8 @@ class CanOpen:
             print(msg)
             can_bus.send(msg)
 
+    # ===== BELOW is general CANbus I/O ABOVE is configuring/working with specifically CANOPEN =======
+
     @staticmethod
     def parse_5vadc_tpdo(msg, resolution):
         data = []
@@ -220,28 +247,13 @@ class CanOpen:
             current_mA = 20
         return ((current_mA - 4) / 16.0) * full_scale
     
-    @staticmethod    
+    @staticmethod
     def parse_i_tpdo(msg):
-        data = []
-
+        currents = []
         for i in range(0, 8, 2):
-            raw = int.from_bytes(msg.data[i:i+2], byteorder='little', signed=False)
-            current = (raw / 65535) * 50  # Scale raw unsigned 16-bit to 0-50 mA
-            data.append(current)
-
-        # Interpret signals:
-        pump_feedback_mA = data[0]
-        flow_meter_mA = data[1]
-
-        pump_percent = CanOpen.mA_to_percent(pump_feedback_mA)
-        flow_kg_per_h = CanOpen.mA_to_flow(flow_meter_mA)
-
-        return {
-            "raw_currents_mA": data,
-            "pump_percent": pump_percent,
-            "flow_kg_per_h": flow_kg_per_h
-        }
-
+            raw = int.from_bytes(msg.data[i:i+2], "little", signed=False)
+            currents.append((raw / 65535) * 50)
+        return currents        
 
 
     
@@ -256,22 +268,6 @@ class CanOpen:
         msg = list(msg_bytes)  # Convert to flat list of ints
 
         return msg
-
-    @staticmethod     
-    def generate_outmm_msg(pump_on, pump_speed):
-
-        if pump_speed < 0:
-            pump_speed = 0
-        elif pump_speed >100:
-            pump_speed = 100
-        else: 
-            pump_speed = pump_speed
-
-        raw_out1 = pump_speed* 655
-
-        raw_out2 = CanOpen.digital_to_16bitanalog(pump_on)
-
-        return raw_out1, raw_out2
     
     @staticmethod
     def digital_to_16bitanalog(digitalval):
@@ -285,6 +281,56 @@ class CanOpen:
         return output
     
     @staticmethod
+    def percent_to_16bitanalog(percent):
+        if  percent == 100:
+            output = 0xFFFF
+        elif percent == 0:
+            output = 0
+        else: 
+            output = (percent/100)*65535
+
+        return output
+    
+    @staticmethod
+    def flow_to_16bitanalog(flow):
+        if  flow == 32.8:
+            output = 0xFFFF
+        elif flow == 0:
+            output = 0
+        else: 
+            output = (32.8/100)*65535
+
+        return output
+
+
+    @staticmethod     
+    def generate_outmm_msg1(pump_on, pump_speed, mfm1_state, mfm2_state):
+
+        if pump_speed < 0:
+            pump_speed = 0
+        elif pump_speed >100:
+            pump_speed = 100
+        else: 
+            pump_speed = pump_speed
+
+        raw_out1 = pump_speed* 655
+
+        raw_out2 = CanOpen.digital_to_16bitanalog(pump_on)
+
+        raw_out3 = CanOpen.flow_to_16bitanalog(mfm1_state)
+        raw_out4 = CanOpen.flow_to_16bitanalog(mfm2_state)
+
+        return raw_out1, raw_out2, raw_out3, raw_out4
+    
+    @staticmethod     
+    def generate_outmm_msg2(alicat_state):
+
+        raw_out1 = CanOpen.percent_to_16bitanalog(alicat_state)
+
+        return raw_out1
+    
+    
+    @staticmethod
     def generic_dout_msg(out1, out2, out3, out4, arbitration_id):
         aout1 = CanOpen.digital_to_16bitanalog(out1)
         aout2 = CanOpen.digital_to_16bitanalog(out2)
@@ -292,124 +338,152 @@ class CanOpen:
         aout4 = CanOpen.digital_to_16bitanalog(out4)
         payload = CanOpen.generate_uint_16bit_msg(aout1, aout2, aout3, aout4)
         msg = can.Message(arbitration_id=arbitration_id, is_extended_id=False, data = payload)
+        return msg
 
-    
     @staticmethod
     def start_listener(bus: can.Bus, resolution, data_queue: asyncio.Queue):
         """
         Starts a CAN bus listener that parses incoming messages and puts structured data
         into a single asyncio.Queue.
-
         :param bus: The python-can bus object to listen on.
         :param resolution: Resolution parameter for ADC parsing (e.g., 16-bit).
         :param data_queue: The single asyncio.Queue to put structured parsed messages into.
-                           Each message will be a dictionary with 'node_id', 'data_type', 'values', and 'timestamp'.
+                        Each message will be a dictionary with 'node_id', 'data_type', 'values', and 'timestamp'.
         """
-        pt_id = 0x181  # Pressure Transducer CAN ID
-        tc_id_map = {0x182, 0x183, 0x184, 0x185} # Thermocouple CAN IDs mapping 
-        fourtwenty_id = {0x1A3, 0x2A3, 0x3A3, 0x4A3} # 4-20mA sensor CAN ID
 
-        print("Creating CAN listener...")
+        can_ids = {
+            0x180 : "micromod",
+            0x181 : "micromod",
+            0x182 : "tc_mm",
+            0x183 : "tc_mm",
+            0x184 : "tc_mm",
+            0x185 : "tc_mm",
+            0x1A3 : "deditec",
+            0x2A3 : "deditec",
+            0x3A3 : "deditec",
+            0x4A3 : "deditec"
+            }   
+        #TODO attach time object in CAN class
+        micromod_map = [0x180, 0x181]
+        tc_mm_map = [0x182,0x183,0x184,0x185]
+        deditec_map = [0x1A3, 0x2A3, 0x3A3, 0x4A3]
+        # can_ids = {
+        #     0x181 : "micromod",
+        #     0x182 : "tc_mm",
+        #     0x1FE : "deditec",
+        #     }   
+        # micromod_map = [0x181]
+        # tc_mm_map = [0x182]
+        # deditec_map = [0x1FE]
 
         class _AsyncListener(can.Listener):
             """
             Internal asynchronous CAN message listener.
             This class defines how incoming CAN messages are handled.
             """
+
+            def __init__(self):
+                super().__init__()
+                self.delta_time = time.time()
+                self.message_buffer = defaultdict(dict)
+                self.expected_ids = set(can_ids)
+#pass data into queue asynchronously
             def on_message_received(self, msg: can.Message):
-                """
-                Callback method invoked when a CAN message is received.
-                Parses the message based on arbitration ID and puts structured data
-                into the provided data_queue.
-                """
-                node_id = msg.arbitration_id
-                
-                # Prepare a common message dictionary structure
-                parsed_message: Dict[str, Any] = {
-                    "node_id": node_id,
-                    "timestamp": datetime.now().isoformat(), 
-                    "data_type": None, 
-                    "values": None     # Will be set below
-                }
+                rec_id = msg.arbitration_id
+                if rec_id not in can_ids:
+                    return
+                message_type = can_ids[rec_id]
+                self.message_buffer[rec_id][message_type] = msg
 
-                if node_id == pt_id:
-                    voltages = CanOpen.parse_5vadc_tpdo(msg, resolution)
-                    parsed_message["data_type"] = 'voltage'
-                    parsed_message["values"] = voltages
-                elif node_id in tc_id_map:
-                    temps = CanOpen.parse_temp_tpdo(msg)
-                    parsed_message["data_type"] = 'temperature'
-                    parsed_message["values"] = temps
-                elif node_id == fourtwenty_id:
-                    signal_data = CanOpen.parse_i_tpdo(msg)
-                    parsed_message["data_type"] = '4-20mA'
-                    parsed_message["values"] = signal_data 
-                else:
-                    # print(f"Unhandled CAN message ID: {hex(node_id)}")
-                    return 
+                received_ids = set(self.message_buffer.keys())
+                current_time = time.time()
 
-                try:
-                    data_queue.put_nowait(parsed_message)
-                except asyncio.QueueFull:
-                    # If queue is full, remove the oldest item and then add the new one
+                if (self.expected_ids == received_ids) or (current_time - self.delta_time >= 0.2):
+                    if current_time - self.delta_time < 0.1:
+                        # Too soon since last push, skip this cycle to throttle at 100ms
+                        return
+
+                    # process messages as before
+                    voltages = []
+                    temps = []
+                    currents = []
+
+                    for i in micromod_map:
+                        try:
+                            v_data = self.message_buffer[i]["micromod"]
+                            voltages.extend(CanOpen.parse_5vadc_tpdo(v_data, 16))
+                        except Exception:
+                            print(f"Warning: Micromod message for ID {hex(i)} missing. Appending 16 zeros.")
+                            voltages.extend(CanOpen.parse_5vadc_tpdo(can.Message(arbitration_id=0, data=[0]*8), 16))
+
+                    for j in tc_mm_map:
+                        try:
+                            tc_data = self.message_buffer[j]["tc_mm"]
+                            temps.extend(CanOpen.parse_temp_tpdo(tc_data))
+                        except KeyError:
+                            print(f"Warning: 'tc_mm' missing at buffer[{j}]")
+                            temps.extend(CanOpen.parse_temp_tpdo(can.Message(arbitration_id=0, data=[0]*8)))
+
+                    for k in deditec_map:
+                        try:
+                            deditec_data = self.message_buffer[k]["deditec"]
+                            currents.extend(CanOpen.parse_i_tpdo(deditec_data))
+                        except KeyError:
+                            print(f"Warning: 'deditec' missing at buffer[{k}]")
+                            currents.extend(CanOpen.parse_i_tpdo(can.Message(arbitration_id=0, data=[0]*8)))
+
+                    parsed_message = {
+                        "timestamp": datetime.now().isoformat(),
+                        "voltage": voltages,
+                        "temperature": temps,
+                        "fourtwenty": currents,
+                    }
+
+                    self.message_buffer.clear()
+
                     try:
-                        data_queue.get_nowait() # Remove oldest
-                        data_queue.put_nowait(parsed_message) # Add new
-                        # print("Queue was full, dropped oldest message.") 
-                    except Exception as e:
-                        print(f"Error handling full queue: {e}")
+                        data_queue.put_nowait(parsed_message)
+                    except asyncio.QueueFull:
+                        try:
+                            data_queue.get_nowait()
+                            data_queue.put_nowait(parsed_message)
+                        except Exception as e:
+                            print(f"Error handling full queue: {e}")
+
+                    self.delta_time = current_time
+
 
         return can.Notifier(bus, [_AsyncListener()], loop=asyncio.get_running_loop())
 
 
     @staticmethod
-    async def send_outputs(can_bus, eStopFlag, pump_state, esv_state):
-        out_minimodul_id = 0x600
-        out_minimod_id = 0x180
+    async def send_outputs(can_bus, eStopFlag, pump_state, esv_state, mfm_state, pic_state):
+        out_minimodul1_id = 0x600
+        out_minimodul2_id = 0x601
+        out_minimod_id = 0x191
+        heaterOn = True
         if eStopFlag:
-            msg_outmm = can.Message(arbitration_id=out_minimodul_id, data=[00]*8, is_extended_id=False)
-            msg_minimod = can.Message(arbitration_id=out_minimod_id, data=[00]*8, is_extended_id=False)
+            msg_outmm = can.Message(arbitration_id=out_minimodul1_id, data=[00]*8, is_extended_id=False)
+            msg_outmm1 = can.Message(arbitration_id=out_minimodul2_id, data=[00]*8, is_extended_id=False)
+            msg_minimod = CanOpen.generic_dout_msg(0, 0, 0 ,0, out_minimod_id)
 
         else:
             speed = max(0.0, min(100.0, pump_state[1] if pump_state[1] is not None else 0.0))
-            raw1, raw2 = CanOpen.generate_outmm_msg(pump_state[0], speed)
-            data_minimodul = CanOpen.generate_uint_16bit_msg(int(raw1), int(raw2), 0, 0)
-            msg_outmm = can.Message(arbitration_id=out_minimodul_id, data=data_minimodul, is_extended_id=False)
-            msg_minimod = CanOpen.generic_dout_msg(esv_state[0], esv_state[1], 0 ,0, out_minimod_id)
+            raw1, raw2, raw3, raw4 = CanOpen.generate_outmm_msg1(pump_state[0], speed, mfm_state[0], mfm_state[1])
+            raw5 = CanOpen.generate_outmm_msg2(pic_state)
+            data_minimodul2 = CanOpen.generate_uint_16bit_msg(int(raw5),0,0,0)
+            data_minimodul = CanOpen.generate_uint_16bit_msg(int(raw1), int(raw2), int(raw3), int(raw4))
+            msg_outmm = can.Message(arbitration_id=out_minimodul1_id, data=data_minimodul, is_extended_id=False)
+            msg_outmm1 = can.Message(arbitration_id=out_minimodul2_id, data=data_minimodul2, is_extended_id=False)
+            msg_minimod = CanOpen.generic_dout_msg(heaterOn, esv_state[0], esv_state[1] ,0, out_minimod_id)
         try:
             can_bus.send(msg_outmm)
+            can_bus.send(msg_outmm1)
             can_bus.send(msg_minimod)
         except Exception as e:
-                print("CAN Send Error (Pump): {str(e)}")
+                print(f"CAN Send Error: {e}")
 
-
-    
-    # @staticmethod
-    # async def send_can_message(can_bus: can.Bus, can_id: int, data: List[int], eStopFlag):
-    #     """nonblocking can_sender 
-
-    #     Args:
-    #         can_bus (can.Bus): can bus
-    #         can_id (int): can address of target
-    #         data (List[int]): msg
-
-    #     Raises:
-    #         ValueError: exception error
-    #     """
-        
-
-
-    #     if len(data) > 8:
-    #         raise ValueError("CAN data cannot exceed 8 bytes")
-    #     msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=False)
-
-    #     try:
-    #         can_bus.send(msg)
-    #         #print(f"[SEND] Sent CAN message: COB-ID=0x{can_id:X}, Data={data}")
-    #     except can.CanError as e:
-    #         print(f"[ERROR] Failed to send CAN message: {e}")
-
-        
+       
 
 def main():
 
@@ -447,8 +521,8 @@ def main():
     except Exception as e:
         print(f"Failed to set operational mode: {e}")
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
 
 
 
