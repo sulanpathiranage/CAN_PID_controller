@@ -28,11 +28,7 @@ from app_stylesheets import Stylesheets
 from NH3_pump_control import NH3PumpControlScene
 from NH3_vaporizer_control import NH3VaporizerControlScene
 from data_manager import SystemDataManager
-from log_manager import AppLogger
 
-# Define the logging columns: (key_name, header_name, formatter_string)
-# This will be dynamically populated based on SystemDataManager designators
-LOGGING_COLUMNS_DEFINITION: List[Tuple[str, str, str]] = []
 
 
 class CustomLiveAxisRange(LiveAxisRange):
@@ -89,7 +85,7 @@ class PyqtgraphPlotWidget(QWidget):
         plot_layout.addWidget(self.temp_legend_widget) 
 
 
-        temp_colors = [Qt.red, Qt.blue, Qt.darkYellow, Qt.magenta, Qt.cyan, Qt.gray, Qt.darkGreen]
+        temp_colors = [Qt.red, Qt.blue, Qt.darkYellow, Qt.magenta, Qt.cyan, Qt.gray, Qt.darkGreen, Qt.darkCyan]
         # temp_symbols = ['s', 't', 'd', 'p', 'h', '+', 'x'] # Different symbols for clarity
 
         for i, designator in enumerate(self.data_manager.temperature_sensor_names):
@@ -191,6 +187,12 @@ class PermanentRightHandDisplay(QWidget):
         self.eStopButton.clicked.connect(self.toggleEStop)
         layout.addWidget(self.eStopButton)
 
+        self.interlockBeginButton = QCheckBox("ENABLE INTERLOCKS")
+        self.interlockBeginButton.setFixedSize(150, 100)
+        # self.eStopButton.setStyleSheet(Stylesheets.EStopPushButtonStyleSheet())
+        self.interlockBeginButton.clicked.connect(self.toggleInterlock)
+        layout.addWidget(self.interlockBeginButton)
+
         self._interlock_labels: list[QLabel] = []
         for idx in range(1, 5):
             lbl = QLabel(f"Interlock {idx}: OK")
@@ -200,25 +202,25 @@ class PermanentRightHandDisplay(QWidget):
             self._interlock_labels.append(lbl)
 
 
-        self.esv1Button = QPushButton("ESV 1")
+        self.esv1Button = QPushButton("ESV 10107")
         self.esv1Button.setCheckable(True)
         self.esv1Button.setFixedSize(150, 80)
         self.esv1Button.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
         self.esv1Button.toggled.connect(self.toggleESV1)
         self.esv1Button.toggled.connect(
             lambda checked: self._update_esv_caption(self.esv1Button,
-                                                     "ESV‑1", checked)
+                                                     "ESV‑10107", checked)
         )        
         layout.addWidget(self.esv1Button)
 
-        self.esv2Button = QPushButton("ESV 2")
+        self.esv2Button = QPushButton("ESV 10112")
         self.esv2Button.setCheckable(True)
         self.esv2Button.setFixedSize(150, 80)
         self.esv2Button.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
         self.esv2Button.toggled.connect(self.toggleESV2)
         self.esv2Button.toggled.connect(
             lambda checked: self._update_esv_caption(self.esv2Button,
-                                                     "ESV‑2", checked)
+                                                     "ESV‑10112", checked)
         )        
         layout.addWidget(self.esv2Button)
 
@@ -260,6 +262,9 @@ class PermanentRightHandDisplay(QWidget):
 
     def toggleEStop(self):
         self.data_manager.toggle_e_stop_state()
+
+    def toggleInterlock(self):
+        self.data_manager.toggle_interlocks()
 
     def toggleESV1(self, checked):
         self.data_manager.set_esv1(checked)
@@ -352,7 +357,7 @@ class ProcessControlWidgets(QWidget):
         self.pic_slider.setDecimals(2)
         self.pic_slider.setSingleStep(0.1)
         self.pic_slider.valueChanged.connect(lambda v: self.data_manager.set_pic(float(v)))
-        layout.addWidget(QLabel("PIC Setpoint:"), 2, 0)
+        layout.addWidget(QLabel("PIC Setpoint ('%' of psig range):"), 2, 0)
         layout.addWidget(self.pic_slider, 2, 1)
 
         main_layout.addWidget(group)
@@ -371,14 +376,17 @@ class SensorDisplayWidget(QWidget):
         self.data_manager = data_manager
         layout = QVBoxLayout(self)
 
-        self._pump_name, self.flow1_name, self.flow2_name  = data_manager.deditec_feedback
+        self._pump_name, self.flow1_name, self.flow2_name, self.pic_name  = data_manager.deditec_feedback
 
         self.pump_feedback_label = QLabel(f"{self._pump_name}: -- %")
         self.flow1_feedback_label = QLabel(f"{self.flow1_name}: -- kg/h")
         self.flow2_feedback_label = QLabel(f"{self.flow2_name}: -- kg/h")
+        self.pic_feedback_label = QLabel(f"{self.pic_name}: -- psig")
         layout.addWidget(self.pump_feedback_label)
         layout.addWidget(self.flow1_feedback_label)
         layout.addWidget(self.flow2_feedback_label)
+        layout.addWidget(self.pic_feedback_label)
+
 
         layout.addWidget(QLabel("Pressure Sensors", styleSheet=Stylesheets.LabelStyleSheet()))
         self.pressure_labels = []
@@ -402,10 +410,11 @@ class SensorDisplayWidget(QWidget):
         self.data_manager.temperature_updated.connect(self.update_temperatures)
         self.data_manager.pump_feedback_updated.connect(self.update_feedback)
 
-    def update_feedback(self, pump_percent: float, flow_rate: float):
+    def update_feedback(self, pump_percent: float, flow_rate1: float, flow_rate2:float, pressure:float):
         self.pump_feedback_label.setText(f"{self._pump_name}: {pump_percent:.1f} %")
-        self.flow1_feedback_label.setText(f"{self.flow1_name}: {flow_rate:.1f} kg/h")
-        self.flow2_feedback_label.setText(f"{self.flow2_name}: {flow_rate:.1f} kg/h")
+        self.flow1_feedback_label.setText(f"{self.flow1_name}: {flow_rate1:.1f} kg/h")
+        self.flow2_feedback_label.setText(f"{self.flow2_name}: {flow_rate2:.1f} kg/h")
+        self.pic_feedback_label.setText(f"{self.pic_name}: {pressure:.1f} psig")
 
 
 
@@ -421,28 +430,36 @@ class SensorDisplayWidget(QWidget):
 
 
 class PIDControlWidget(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.pid_enabled = False
-        self.controller = PIDController()
-        self._last_computed_output = None
-        main_layout = QVBoxLayout(self)  
+
+    def __init__(self, data_manager: SystemDataManager, parent=None):
+        super().__init__(parent)
+        self.data_manager = data_manager 
+
+
+        main_layout = QVBoxLayout(self)
         group = QGroupBox("PID Control", self)
         group.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         layout = QGridLayout(group)
-        
-        self.output_label = QLabel("PID Output: -- %", styleSheet=Stylesheets.LabelStyleSheet())
-        layout.addWidget(self.output_label, 0,0)
 
+        self.output_label = QLabel("PID Output: -- %")
+        
+        self.output_label.setStyleSheet("color: #333;")
+        layout.addWidget(self.output_label, 0, 0, 1, 2)
         self.toggle_button = QPushButton("Enable PID", checkable=True)
         self.toggle_button.setStyleSheet("""
-            background-color: #007ACC;
-            color: white;
-            font-weight: bold;
-            border-radius: 5px;
+            QPushButton {
+                background-color: #007ACC;
+                color: white;
+                font-weight: bold;
+                border-radius: 5px;
+                padding: 5px;
+            }
+            QPushButton:checked {
+                background-color: #DC3545; /* Red when checked/enabled */
+            }
         """)
-        self.toggle_button.clicked.connect(self.toggle_pid)
-        layout.addWidget(self.toggle_button, 1,1)
+
+        layout.addWidget(self.toggle_button, 1, 0, 1, 2) # Span 2 columns
 
         self.kp_input = QDoubleSpinBox(value=1.0)
         self.ki_input = QDoubleSpinBox(value=0.0)
@@ -450,72 +467,57 @@ class PIDControlWidget(QWidget):
         self.setpoint_input = QDoubleSpinBox(value=0)
 
         spinboxes = [self.kp_input, self.ki_input, self.kd_input, self.setpoint_input]
-        labels = ["Kp", "Ki", "Kd", "Flow Setpoint"]
+        labels = ["Kp", "Ki", "Kd", "Flow Setpoint"] # Assuming "Flow Setpoint" directly corresponds to PID setpoint
         index = 2
         for label, spinbox in zip(labels, spinboxes):
             spinbox.setRange(0, 1000)
             spinbox.setDecimals(2)
             layout.addWidget(QLabel(label), index , 0)
-            layout.addWidget(spinbox,index, 1)
+            layout.addWidget(spinbox, index, 1)
             index += 1
 
         main_layout.addWidget(group)
 
+        self._connect_signals()
+        self._update_ui_from_data_manager_initial()
 
+    def _connect_signals(self):
+        self.kp_input.valueChanged.connect(self.data_manager.set_pid_kp)
+        self.ki_input.valueChanged.connect(self.data_manager.set_pid_ki)
+        self.kd_input.valueChanged.connect(self.data_manager.set_pid_kd)
+        self.setpoint_input.valueChanged.connect(self.data_manager.set_pid_setpoint)
 
-    def toggle_pid(self):
-        self.pid_enabled = self.toggle_button.isChecked()
-        self.toggle_button.setText("Disable PID" if self.pid_enabled else "Enable PID")
-        self.controller.reset()
-        self._last_computed_output = None if not self.pid_enabled else self._last_computed_output
-        self.output_label.setText(f"PID Output: {'--' if not self.pid_enabled else f'{self._last_computed_output:.1f}'} %")
+        self.data_manager.pid_output_updated.connect(self._update_output_display)
+        self.data_manager.pid_enabled_status_changed.connect(self._update_toggle_button_state)
+        self.data_manager.pid_setpoint_updated.connect(self.setpoint_input.setValue) # Connect to the correct setpoint signal
 
+    def _update_output_display(self, output_value: float):
+        """Updates the displayed PID output."""
+        self.output_label.setText(f"PID Output: {output_value:.2f} %")
 
-    def compute_output(self, measured_value: float) -> Union[float, None]:
-        self.update_pid_params()
-        if self.pid_enabled:
-            output = self.controller.calculate(measured_value)
-            self._last_computed_output = output
-            self.output_label.setText(f"PID Output: {output:.1f} %")
-            return output
-        else:
-            self._last_computed_output = None
-            self.output_label.setText("PID Output: -- %")
-            return None
+    def _update_toggle_button_state(self, enabled: bool):
+        """Updates the toggle button's checked state and text based on PID enabled status."""
+        self.toggle_button.setChecked(enabled)
+        self.toggle_button.setText("Disable PID" if enabled else "Enable PID")
 
-    def update_pid_params(self):
-        self.controller.set_params(self.kp_input.value(), self.ki_input.value(), self.kd_input.value())
-        self.controller.set_setpoint(self.setpoint_input.value())
+    def _update_ui_from_data_manager_initial(self):
+        """
+        Retrieves initial PID parameters and state from the SystemDataManager
+        and sets the GUI elements accordingly.
+        """
+        self.kp_input.setValue(self.data_manager.pid_controller.kp)
+        self.ki_input.setValue(self.data_manager.pid_controller.ki)
+        self.kd_input.setValue(self.data_manager.pid_controller.kd)
+        self.setpoint_input.setValue(self.data_manager._pid_setpoint) 
 
-    def get_last_computed_output(self) -> Union[float, None]:
-        return self._last_computed_output
+        self._update_toggle_button_state(self.data_manager._pid_enabled)
+        self._update_output_display(self.data_manager._commanded_pid_output) 
 
 
 class PumpControlWindow(QWidget):
     def __init__(self, data_manager: SystemDataManager):
         super().__init__()
         self.data_manager = data_manager
-        self.logger = AppLogger()
-
-        global LOGGING_COLUMNS_DEFINITION
-        logging_temp_cols = []
-        for i, name in enumerate(self.data_manager.temperature_sensor_names):
-
-            key = name.lower().replace(" ", "_") # Simple key creation
-            logging_temp_cols.append((key, f"{name} (°C)", ".1f"))
-
-#TODO FIX
-        LOGGING_COLUMNS_DEFINITION = [
-            (f"pt_{name.lower()}", f"{name} (psi)", ".1f")
-            for name in self.data_manager.pressure_sensor_names
-        ] + logging_temp_cols + [
-            (self.data_manager.flow_sensor_names[0].lower(), f"{self.data_manager.flow_sensor_names[0]} (kg/h)", ".1f"),
-            ("pump_on_status", "Pump On", ""),
-            ("commanded_pump_speed", "Commanded Pump Speed (%)", ".1f"),
-            ("pump_feedback", "PumpFeedback (%)", ".1f"),
-            ("flow_rate_feedback", "Flow Rate Feedback (kg/h)", ".1f"),
-        ]
-
         self.setWindowTitle("Instrumentation Dashboard")
         self.setMinimumSize(1200, 900)
         self.setStyleSheet("color: white; background-color: #212121;")
@@ -523,7 +525,7 @@ class PumpControlWindow(QWidget):
         self.pump_control = PumpControlWidget()
         self.plot_canvas = PyqtgraphPlotWidget(self.data_manager)
         self.sensor_display = SensorDisplayWidget(self.data_manager)
-        self.pid_control = PIDControlWidget()
+        self.pid_control = PIDControlWidget(self.data_manager)
         self.process_control = ProcessControlWidgets(self.data_manager)
         self.permanentRightHandControl = PermanentRightHandDisplay(self.data_manager)
 
@@ -566,6 +568,8 @@ class PumpControlWindow(QWidget):
         self.timer.timeout.connect(self._update_gui_and_can_commands)
         self.timer.start(100)
 
+        self.data_manager.start_log.connect(self._update_logging_button_state)
+
         self.data_manager.can_connection_status_changed.connect(self._update_can_button_and_status)
         self.data_manager.can_error.connect(self._show_can_error_message)
 
@@ -598,53 +602,49 @@ class PumpControlWindow(QWidget):
         """)
 
     def _toggle_logging(self):
-        if not self.logger.is_logging:
-            filename = self.log_filename_entry.text().strip()
+        # Determine the *next* state of logging
+        is_currently_logging = self.log_button.text() == "Stop Logging" # Or check self.data_manager._logging_enabled
 
-            if self.logger.start_logging(filename, columns_config=LOGGING_COLUMNS_DEFINITION):
-                self.log_button.setText("Stop Logging")
-                self.log_filename_entry.setEnabled(False)
-            else:
-                QMessageBox.warning(self, "Logging Error", "Failed to start logging. Check filename and permissions.")
+        if not is_currently_logging:
+            filename = self.log_filename_entry.text().strip()
+            self.data_manager.log_name.emit(filename)
+            self.data_manager.start_log.emit(True) 
         else:
-            self.logger.stop_logging()
-            self.log_button.setText("Start Logging")
-            self.log_filename_entry.setEnabled(True)
+            self.data_manager.start_log.emit(False) # Tell the data manager to stop logging
+
+
+
+    def _update_logging_button_state(self, is_logging: bool):
+        """Updates the log button's text and filename entry state."""
+        self.log_button.setText("Stop Logging" if is_logging else "Start Logging")
+        self.log_filename_entry.setEnabled(not is_logging)
+        if is_logging:
+            self.log_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #DC143C; /* Red when logging */
+                    color: white;
+                    padding: 8px 16px;
+                    border: none;
+                    border-radius: 4px;
+                    font-weight: bold;
+                }
+                QPushButton:hover { background-color: #C21136; }
+                QPushButton:pressed { background-color: #A70F2C; }
+            """)
+        else:
+            self.log_button.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet()) # Revert to default green
+
 
     def _update_gui_and_can_commands(self):
         self.plot_canvas.update_plot()
 
         pump_on, manual_speed = self.pump_control.get_state()
-        measured_pressure = self.data_manager.get_latest_sensor_value("PT10110") # Assuming PID targets PT10110
-        pid_output = self.pid_control.compute_output(measured_pressure)
-        self.data_manager.update_commanded_pump_state(pump_on, manual_speed, pid_output)
+        pid_output_from_data_manager = self.data_manager._commanded_pid_output
+        self.data_manager.update_commanded_pump_state(pump_on, manual_speed, pid_output_from_data_manager)
 
-        if self.logger.is_logging:
-            commanded_speed_for_log = pid_output if pid_output is not None else manual_speed
-            commanded_speed_for_log = max(0.0, min(100.0, float(commanded_speed_for_log if commanded_speed_for_log is not None else 0.0)))
-
-            data_to_log = {}
-            for name in self.data_manager.pressure_sensor_names:
-                data_to_log[f"pt_{name.lower()}"] = self.data_manager.get_latest_sensor_value(name)
-
-            for name in self.data_manager.temperature_sensor_names:
-                data_to_log[name.lower().replace(" ", "_")] = self.data_manager.get_latest_sensor_value(name)
-
-            if self.data_manager.flow_sensor_names:
-                flow_designator = self.data_manager.flow_sensor_names[0]
-                data_to_log[flow_designator.lower()] = self.data_manager.get_latest_sensor_value(flow_designator)
-
-            data_to_log.update({
-                "pump_on_status": pump_on,
-                "commanded_pump_speed": commanded_speed_for_log,
-                "pump_feedback": self.data_manager.last_pump_feedback, 
-                "flow_rate_feedback": self.data_manager.last_flow_rate, 
-            })
-
-            self.logger.log_data(data_to_log)
+        
 
     def closeEvent(self, event):
-        self.logger.stop_logging()
         self.data_manager.close_can_connection()
         event.accept()
 
@@ -671,36 +671,18 @@ class PAndIDGraphicWindow(QWidget):
         # QVBoxLayout(nh3_vaporizer_test_tab).addWidget(self.nh3vaporizer)
 
         self.tab_widget.addTab(nh3_pump_test_tab, "NH3 PUMP TEST-1")
-        # self.tab_widget.addTab(nh3_vaporizer_test_tab, "NH3 VAPORIZER TEST-1")
         tabWindowLayout.addWidget(self.tab_widget)
 
 
-        for designator in self.data_manager.pressure_sensor_names:
-            self.data_manager.pressure_updated.connect(
-                lambda p, d=designator: asyncio.create_task(self.nh3pump.run_plots(self.data_manager.get_latest_sensor_value(d), d))
-            )
+        
 
-        for designator in self.data_manager.temperature_sensor_names:
-            self.data_manager.temperature_updated.connect(
-                lambda t, d=designator: asyncio.create_task(self.nh3pump.run_plots(self.data_manager.get_latest_sensor_value(d), d))
-            )
-
-        if self.data_manager.flow_sensor_names:
-            flow_designator = self.data_manager.flow_sensor_names[0]
-            self.data_manager.pump_feedback_updated.connect(
-                lambda p, f, d=flow_designator: asyncio.create_task(self.nh3pump.run_plots(self.data_manager.get_latest_sensor_value(d), d))
-            )
-
-        self.data_manager.pump_feedback_updated.connect(lambda p, f: asyncio.create_task(self.nh3pump.run_plots(p, "PUMP")))
 
 
 async def main_async():
+
     app = QApplication(sys.argv)
-
     data_manager = SystemDataManager(history_len=6000)
-
     pAndIdGraphicWindow = PAndIDGraphicWindow(data_manager=data_manager)
-
     controlWindow = PumpControlWindow(data_manager=data_manager)
 
     pAndIdGraphicWindow.show()

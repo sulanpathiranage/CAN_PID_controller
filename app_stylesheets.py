@@ -26,6 +26,31 @@ class Stylesheets:
         """
         return pushButtonStyle
     
+    def TogglePushButtonStyleSheet():
+        pushButtonStyle = """
+            QPushButton {
+                background-color: #486a8c;       /* Muted blue-gray */
+                color: #ffffff;
+                border-radius: 1px;
+                padding: 1px 5px;
+                font-weight: 500;
+            }
+
+            QPushButton:hover {
+                background-color: #4c5a6a;
+            }
+
+            QPushButton:pressed {
+                background-color: #2c3a4a;
+            }
+
+            QPushButton:disabled {
+                background-color: #2a2f35;
+                color: #888888;
+            }
+        """
+        return pushButtonStyle
+    
     def EStopPushButtonStyleSheet():
         eStopPushButtonSyle = """
         QPushButton {

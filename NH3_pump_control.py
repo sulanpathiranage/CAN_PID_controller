@@ -1,5 +1,5 @@
 import asyncio
-from typing import List, Dict, Any, Union, Tuple
+from typing import List, Dict, Any, Union, Tuple, Callable
 
 from PySide6.QtWidgets import (
     QWidget, QPushButton, QGraphicsScene, QGraphicsView,
@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout
 )
 from PySide6.QtCore import (
-    Qt, QLineF, QPointF, QRectF, QTimer
+    Qt, QLineF, QPointF, QRectF, QTimer, Signal
 )
 from PySide6.QtGui import (
     QFont, QColor, QPen, QPainter, QPolygonF
@@ -43,7 +43,7 @@ class NH3PumpControlScene(QWidget):
         self.data_manager = data_manager
 
         # Valve states (used to toggle open/close)
-        self.esv10401ValveState = False
+        # self.esv10401ValveState = False
         self.fv10106ValveState = False
         self.sv10107ValveState = False
         self.fv10129ValveState = False
@@ -55,75 +55,70 @@ class NH3PumpControlScene(QWidget):
         self.nh3_pump_label = QLabel("NH3 PUMP TEST-1")
 
         # Scene and view setup for drawing schematic
-        self.systemControlScene = QGraphicsScene() # Holds schematic elements
-        self.systemControlView = QGraphicsView(self.systemControlScene) # Displays the schematic scene
+        self.systemControlScene = QGraphicsScene()
+        self.systemControlView = QGraphicsView(self.systemControlScene)
         self.systemControlView.setStyleSheet(Stylesheets.GraphicsViewStyleSheet())
         self.systemControlView.setRenderHints(self.systemControlView.renderHints() | QPainter.RenderHint.Antialiasing)
 
-        # Dictionary to hold all sensors as SensorPlot objects
         self.sensors: dict[str, SensorPlot] = {} # Maps sensor names to their live plot widgets
 
-        # Define sensor definitions as tuples (name, data_type_category, position, units, live)
         sensor_defs = [
             ("PT10120", "pressure", (160, -190), "psi", True),
             ("PT10130",  "pressure", (610, -190), "psi", True),
             ("PT10118", "pressure", (-50, 350), "psi", True),
             ("PT10110", "pressure", (-525, -75), "psi", True),
-            # ("PIC10126", "pressure", (660, -400), "psi", True),
-            # ("PI10130", "pressure", (310, -400), "psi", True),
+            ("PT10134", "pressure", (400, -480), "psi", True),  # Added PT10134
             ("TI10111", "temperature", (-625, -75), "°C", True),
             ("TI10115", "temperature", (-480, 130), "°C", True),
             ("TI10116", "temperature", (-480, 300), "°C", True),
             ("TI10117", "temperature", (-150, 350), "°C", True),
             ("TI01", "temperature", (350, 260), "°C", True),
             ("TI10121", "temperature", (310, -190), "°C", True),
-            ("TI10119", "temperature", (460, 50), "°C", True),
-            ("FT1024", "flow_feedback", (810, -190), "kg/h", True),
-            # ("FIC10124", "flow_feedback", (700, 160), "kg/h", True),
-            # ("FIC10106", "flow_feedback", (-600, -325), "kg/h", True),
+            ("TI10119", "temperature", (720, -190), "°C", True),
+            ("TI10122", "temperature", (530, -190), "°C", True),  # Added TI10122
+            ("FT10124", "flow_feedback", (810, -190), "kg/h", True),
+            ("FT10106", "flow_feedback", (-500, -325), "kg/h", True),
+            ("PIC10126", "flow_feedback", (600, -480), "psig", True),
+
             ("PumpFeedback", "pump_feedback", (-40, 60), "%", True),
-            
         ]
 
-        # Initialize all SensorPlots and add them to the scene
-        for name, data_type_category, pos, units, live in sensor_defs:
-            sp = SensorPlot(
+        for name, kind, pos, units, live in sensor_defs:
+            current_sensor_plot = SensorPlot( # Use a distinct variable name for clarity
                 self.systemControlScene,
                 name,
                 self.data_manager,
-                data_type_category,
+                kind,
                 pos,
                 units,
                 live
             )
-            self.sensors[name] = sp
+            self.sensors[name] = current_sensor_plot
 
-        for name, kind, pos, units, live in sensor_defs:
-            sp = SensorPlot(self.systemControlScene, name,
-                            self.data_manager, kind, pos, units, live)
-            self.sensors[name] = sp
+
             if kind == "pressure":
                 idx = self.data_manager.pressure_sensor_names.index(name)
                 self.data_manager.pressure_updated.connect(
-                    # capture idx & sp
-                    lambda vals, i=idx, s=sp: s.update_value(vals[i])
+                    lambda vals, i=idx, s_plot=current_sensor_plot: s_plot.update_value(vals[i])
                 )
-
             elif kind == "temperature":
                 idx = self.data_manager.temperature_sensor_names.index(name)
                 self.data_manager.temperature_updated.connect(
-                    lambda vals, i=idx, s=sp: s.update_value(vals[i])
+                    lambda vals, i=idx, s_plot=current_sensor_plot: s_plot.update_value(vals[i])
                 )
             elif kind == "flow_feedback":
+                # Use partial to pre-apply current_sensor_plot as the last argument
+                # The lambda will then receive the 4 signal values first
                 self.data_manager.pump_feedback_updated.connect(
-                    lambda pump, flow, s=sp: s.update_value(flow)
+                    # ft1024_val and pic_val are the 3rd and 4th floats
+                    # This lambda needs to match the 4 floats emitted by the signal
+                    lambda pump_val, flow_val, ft1024_val, pic_val, s_plot=current_sensor_plot: s_plot.update_value(flow_val)
                 )
             elif kind == "pump_feedback":
+                # Similarly for pump_feedback
                 self.data_manager.pump_feedback_updated.connect(
-                    lambda pump, flow, s=sp: s.update_value(pump)
+                    lambda pump_val, flow_val, ft1024_val, pic_val, s_plot=current_sensor_plot: s_plot.update_value(pump_val)
                 )
-
-
         # Zoom and Grid Controls
         self.zoomInButton = QPushButton("Zoom In")
         self.zoomOutButton = QPushButton("Zoom Out")
@@ -144,45 +139,92 @@ class NH3PumpControlScene(QWidget):
 
         # Digital Output Controls (valves): Label + Toggle button
         # Format: Label (shows state), Button (toggles state)
-        self.esv10401Label = CreatePlotLabel(self.systemControlScene, -750, -325)
-        self.esv10401Label.setLabelText("CLOSED")
-        self.esv10401Button = CreatePlotButton(
-            self.systemControlScene,
-            partial(self._toggle_digital_output, self.esv10401Label, 'esv10401ValveState', 0),
-            "Toggle", -750, -285
-        )
+        # self.esv10401Label = CreatePlotLabel(self.systemControlScene, -750, -325)
+        # # self.esv10401Label.setLabelText("CLOSED")
+        # self.esv10401Button = CreatePlotButton(
+        #     self.systemControlScene,
+        #     partial(self._toggle_digital_output, self.esv10401Label, 'esv10401ValveState', 0),
+        #     "Toggle", -750, -285
+        # )
 
-        self.fv10106Label = CreatePlotLabel(self.systemControlScene, -500, -325)
-        self.fv10106Label.setLabelText("CLOSED")
-        self.fv10106Button = CreatePlotButton(
-            self.systemControlScene,
-            partial(self._toggle_digital_output, self.fv10106Label, 'fv10106ValveState', 1),
-            "Toggle", -500, -285
-        )
+        # self.fv10106Label = CreatePlotLabel(self.systemControlScene, -500, -325)
+        # self.fv10106Label.setLabelText("CLOSED")
+        # self.fv10106Button = CreatePlotButton(
+        #     self.systemControlScene,
+        #     partial(self._toggle_digital_output, self.fv10106Label, 'fv10106ValveState', 1),
+        #     "Toggle", -500, -285
+        # )
 
+        # ESV 10107 Valve
         self.esv10107Label = CreatePlotLabel(self.systemControlScene, -350, -250)
-        self.esv10107Label.setLabelText("CLOSED")
-        self.sv10107Button = CreatePlotButton(
-            self.systemControlScene,
-            partial(self._toggle_digital_output, self.esv10107Label, 'esv10107ValveState', 2),
-            "Toggle", -350, -210
+        self.esv10107Label.setLabelText("CLOSED") # Initial state text
+
+        # Create a QPushButton for interaction
+        self.esv10107PushButton = QPushButton("ESV-10107: CLOSED") # Initial text for the button
+        self.esv10107PushButton.setCheckable(True)
+        self.esv10107PushButton.setFixedSize(100, 40) # Adjust size as needed
+        self.esv10107PushButton.setStyleSheet(Stylesheets.TogglePushButtonStyleSheet())
+
+        # Add the QPushButton to the scene via a proxy widget
+        esv10107_button_proxy = self.systemControlScene.addWidget(self.esv10107PushButton)
+        esv10107_button_proxy.setPos(-350, -210) # Position where you want the interactive button
+
+        # Connect the QPushButton's toggled signal to the _toggle_digital_output
+        self.esv10107PushButton.toggled.connect(
+            partial(self._toggle_digital_output,
+                    self.esv10107PushButton,            # The actual QPushButton
+                    "ESV-10107",                        # Base name for button caption
+                    self.data_manager.set_esv1,     # Data manager set function
+                    self.esv10107Label                 # The CreatePlotLabel to update graphically
+                   )
+        )
+        # Connect data manager's signal to update button's checked state and CreatePlotLabel's text/color
+        self.data_manager.esv1_state_toggled.connect(self.esv10107PushButton.setChecked)
+        # Also connect to a slot that updates the CreatePlotLabel's text/color
+        self.data_manager.esv1_state_toggled.connect(
+            partial(self._update_plot_label_from_state, self.esv10107Label, "ESV-10107")
         )
 
-        self.fv10129Label = CreatePlotLabel(self.systemControlScene, -125, -675)
-        self.fv10129Label.setLabelText("CLOSED")
-        self.fv10129Button = CreatePlotButton(
-            self.systemControlScene,
-            partial(self._toggle_digital_output, self.fv10129Label, 'fv10129ValveState', 3),
-            "Toggle", -125, -635
+
+        # ESV 10112 Valve
+        self.esv10112Label = CreatePlotLabel(self.systemControlScene, -425, -80)
+        self.esv10112Label.setLabelText("CLOSED") # Initial state text
+
+        # Create a QPushButton for interaction
+        self.esv10112PushButton = QPushButton("ESV-10112: CLOSED") # Initial text for the button
+        self.esv10112PushButton.setCheckable(True)
+        self.esv10112PushButton.setFixedSize(100, 40) # Adjust size as needed
+        self.esv10112PushButton.setStyleSheet(Stylesheets.TogglePushButtonStyleSheet())
+
+        # Add the QPushButton to the scene via a proxy widget
+        esv10112_button_proxy = self.systemControlScene.addWidget(self.esv10112PushButton)
+        esv10112_button_proxy.setPos(-425, -50) # Position where you want the interactive button
+
+        # Connect the QPushButton's toggled signal to the _toggle_digital_output
+        self.esv10112PushButton.toggled.connect(
+            partial(self._toggle_digital_output,
+                    self.esv10112PushButton,            # The actual QPushButton
+                    "ESV-10112",                        # Base name for button caption
+                    self.data_manager.set_esv2,     # Data manager set function
+                    self.esv10112Label                 # The CreatePlotLabel to update graphically
+                   )
+        )
+        # Connect data manager's signal to update button's checked state and CreatePlotLabel's text/color
+        self.data_manager.esv2_state_toggled.connect(self.esv10112PushButton.setChecked)
+        # Also connect to a slot that updates the CreatePlotLabel's text/color
+        self.data_manager.esv2_state_toggled.connect(
+            partial(self._update_plot_label_from_state, self.esv10112Label, "ESV-10112")
         )
 
-        self.fv10131Label = CreatePlotLabel(self.systemControlScene, 710, -60)
-        self.fv10131Label.setLabelText("CLOSED")
-        self.fv10131Button = CreatePlotButton(
-            self.systemControlScene,
-            partial(self._toggle_digital_output, self.fv10131Label, 'fv10131ValveState', 3),
-            "Toggle", 710, -20
-        )
+
+
+        # self.fv10131Label = CreatePlotLabel(self.systemControlScene, 710, -60)
+        # self.fv10131Label.setLabelText("CLOSED")
+        # self.fv10131Button = CreatePlotButton(
+        #     self.systemControlScene,
+        #     partial(self._toggle_digital_output, self.fv10131Label, 'fv10131ValveState', 3),
+        #     "Toggle", 710, -20
+        # )
 
         # Heater Setpoint Input tied to sensor position
         heater_sensor_plot = self.sensors.get("TI10119")
@@ -239,16 +281,19 @@ class NH3PumpControlScene(QWidget):
         SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 26, 125, 13, "CHEM VENT", 900, 40)
         SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 26, 125, 13, "CHEM VENT", 900, 310)
 
-        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "ESV\n10401", -700, -250)
+        # SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "ESV\n10401", -700, -250)
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "PRV\n01", 150, 100)
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "P1\n01", 50, -150)
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "PSV\n10402", 600, 100)
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "FV\n10129", -75, -600)
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "FV\n10106", -500, -250)
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "SV\n10107", -400, -250)
+        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "SV\n10112", -425, 0)
 
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10117", -150, 300)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10118", -50, 300)
+        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10119", 725, -100)
+
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10120", 200, -100)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10121", 300, -100)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "FIC", "10124", 700, 100)
@@ -260,6 +305,7 @@ class NH3PumpControlScene(QWidget):
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10123", 600, -100)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "FIC", "10106", -550, -250)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10110", -500, 0)
+
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10111", -600, 0)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10115", -550, 150)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10116", -550, 300)
@@ -270,8 +316,8 @@ class NH3PumpControlScene(QWidget):
         SchematicHelperFunctions.CreateLabeledBox(self.systemControlScene, 60, 30, "E-105", -700, 210)
         SchematicHelperFunctions.CreateLabeledBox(self.systemControlScene, 100, 100, "N2 GAS\nCYLINDER", -900, -200)
 
-        SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=750, yPos=30, size=20, label="Valve")
-        SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=-675, yPos=-150, size=20, label="ESV 10401")
+        # SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=750, yPos=30, size=20, label="Valve")
+        # SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=-675, yPos=-150, size=20, label="ESV 10401")
         SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=-475, yPos=-150, size=20, label="FV 10106")
         SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=-375, yPos=-150, size=20, label="SV 10107")
         SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=-50, yPos=-500, size=20, label="FV 10129")
@@ -281,7 +327,7 @@ class NH3PumpControlScene(QWidget):
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -375, -200, -375, -150, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -475, -200, -475, -150, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -525, -200, -525, -150, thickness=2)
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -675, -200, -675, -150, thickness=2)
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -670, 241, -670, 275, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 900, 30, 900, -260, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 100, 30, 910, 30, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 225, -50, 225, 30, thickness=2)
@@ -291,6 +337,7 @@ class NH3PumpControlScene(QWidget):
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 575, -50, 575, 30, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 625, -50, 625, 30, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 825, -50, 825, 30, thickness=2)
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 750, -50, 750, 30, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 675, 30, 675, 300, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 675, 300, 910, 300, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 675, 125, 650, 125, thickness=2)
@@ -305,7 +352,6 @@ class NH3PumpControlScene(QWidget):
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -475, 50, -475, 100, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -475, 100, -475, 100, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -300, 225, -640 , 225, thickness=2)
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -670, 240, -670, 275, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -670, 275, -300, 275, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -525, 225, -525, 200, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -525, 275, -525, 300, thickness=2)
@@ -317,6 +363,7 @@ class NH3PumpControlScene(QWidget):
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -125, 300, -125, 250, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -25, 300, -25, 250, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -50, -550, -50, -500, thickness=2)
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -400, 50, -400, 100, thickness=2)
 
         # Adjust zoom
         self.systemControlView.scale(0.9, 0.9)
@@ -334,21 +381,71 @@ class NH3PumpControlScene(QWidget):
             SchematicHelperFunctions.RemoveCoordinateGrid(self.systemControlScene)
 
 
-    def _toggle_digital_output(self, label: CreatePlotLabel, state_attr_name: str, output_index: int):
-        """
-        Toggles the specified valve state, updates the SystemDataManager, and updates the UI label.
 
-        Args:i
-            label (CreatePlotLabel): The label object to update.
-            state_attr_name (str): Name of the instance variable representing the valve's state.
-            output_index (int): Index used to communicate with SystemDataManager.
+    def _toggle_digital_output(self, button: QPushButton, base_name: str,
+                               datamanager_set_function: Callable[[bool], None],
+                               datamanager_state_signal: Signal,
+                               plot_label: CreatePlotLabel = None): # Added optional plot_label
         """
-        current_state = getattr(self, state_attr_name)
-        new_state = not current_state
+        Toggles a digital output (e.g., valve) based on a QCheckableButton's state,
+        updates its caption, commands the data manager, and optionally updates a CreatePlotLabel.
 
-        self.data_manager.update_commanded_digital_output_state(output_index, 1 if new_state else 0)
-        self._update_valve_label(label, new_state)
-        setattr(self, state_attr_name, new_state)
+        This function is designed to be connected to the 'toggled' signal of a QPushButton.
+
+        Args:
+            button (QPushButton): The QCheckableButton instance that emitted the signal.
+            base_name (str): The base name for the button's caption (e.g., "ESV-10107").
+            datamanager_set_function (Callable[[bool], None]): The method in data_manager to call
+                                                               to command the new state.
+            datamanager_state_signal (Signal): The PySide6 signal from data_manager that emits
+                                               the current state of this specific output.
+                                               (Used for connections in __init__).
+            plot_label (CreatePlotLabel, optional): An optional CreatePlotLabel to update visually.
+        """
+        checked_state = button.isChecked()
+
+        # Update the button's text immediately for visual feedback
+        self._update_button_caption(button, base_name, checked_state)
+
+        # If a CreatePlotLabel is provided, update its text and color as well
+        if plot_label:
+            self._update_plot_label_from_state(plot_label, checked_state)
+
+        # Call the data manager's set function to command the new state
+        datamanager_set_function(checked_state)
+
+        # Reminder: The connection `datamanager_state_signal.connect(button.setChecked)`
+        # and `datamanager_state_signal.connect(partial(self._update_plot_label_from_state, plot_label, base_name))`
+        # MUST be made ONCE in the __init__ method for external synchronization.
+
+
+    def _update_button_caption(self, btn: QPushButton, base_name: str, open_state: bool):
+        """
+        Updates the text of a QCheckableButton to show its open/closed state.
+        Args:
+            btn (QPushButton): The QCheckableButton instance.
+            base_name (str): The base name of the valve (e.g., "ESV-10107").
+            open_state (bool): True if the valve is open, False if closed.
+        """
+        btn.setText(f"{base_name}: {'OPEN' if open_state else 'CLOSED'}")
+
+    def _update_plot_label_from_state(self, label: CreatePlotLabel, open_state: bool):
+        """
+        Updates a CreatePlotLabel's text and color based on the valve's state.
+        This is a helper for the CreatePlotLabel visual representation.
+        """
+        if open_state:
+            label.setLabelText("OPEN")
+            label.setLabelColorGreen()
+        else:
+            label.setLabelText("CLOSED")
+            label.setLabelColorRed()  
+
+
+
+
+
+
 
 
     def _update_valve_label(self, label: CreatePlotLabel, is_open: bool):

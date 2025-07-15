@@ -686,7 +686,6 @@ class CreatePlotWindow(QDialog):
         self.current_value_label.setText(f"{self.designator}: {data_val:.1f} {self.units}")
 
 
-# --- SensorPlot Class to manage graphical representation of a single sensor ---
 class SensorPlot:
     """
     Aggregates all GUI elements for a single sensor on the P&ID diagram.
@@ -799,73 +798,60 @@ class SensorPlot:
             self.plot_window.activateWindow()
             self.plot_window.raise_()
 
+    def update_value(self, new_value: float):
+        """
+        Updates the displayed sensor value on the schematic label and optionally
+        sends data to the pop-up plot window.
+        This method is called by the _on_..._data_update_for_label_and_plot methods.
+        """
+        # Format value for display on the schematic label
+        if self.data_type_category == "temperature" and new_value == self.data_manager.INVALID_TEMP_MARKER:
+            display_text = "INVALID"
+            self.schematic_label.setLabelColorRed()
+        else:
+            display_text = f"{new_value:.1f}"
+            self.schematic_label.setLabelColorDefault() # Ensure it reverts to default if OK
+
+        # Update the text on the schematic label
+        self.schematic_label.setLabelText(f"{display_text} {self.units}")
+
+        # If a plot window is open and enabled, send data to it
+        if self.live_plot_enabled and self.plot_window and self.plot_window.isVisible():
+            # Call the async method in CreatePlotWindow to append and plot new data
+            # This is wrapped in asyncio.create_task because _on_new_data_for_plot is async
+            asyncio.create_task(self.plot_window._on_new_data_for_plot(new_value))
+
+    # --- Modify these existing methods to call the new update_value method ---
+    # These methods are primarily responsible for receiving the signal and
+    # extracting the correct 'value' for this specific SensorPlot instance.
     def _on_pressure_data_update_for_label_and_plot(self, pressures: List[float]):
         """
-        Update the pressure label and plot window when new data arrives.
-
-        Parameters
-        -------
-        pressures : List[float]
-            List of updated pressure values from the data manager.
+        Receives pressure_updated signal and calls update_value for this sensor.
         """
         if self.designator in self.data_manager.pressure_sensor_names:
             value = self.data_manager.get_latest_sensor_value(self.designator)
-            # --- MODIFIED: Label text should ONLY be the value + units ---
-            self.schematic_label.setLabelText(f"{value:.1f} {self.units}")
-            # --- END MODIFIED ---
-            if self.live_plot_enabled and self.plot_window and self.plot_window.isVisible():
-                asyncio.create_task(self.plot_window._on_new_data_for_plot(value))
+            self.update_value(value) 
 
     def _on_temperature_data_update_for_label_and_plot(self, temperatures: List[float]):
         """
-        Update the temperature label and plot when new data is received.
-
-        Parameters
-        -------
-        temperatures : List[float]
-            List of updated temperature values from the data manager.
-
-        Notes
-        -------
-        Displays "INVALID" and turns the label red if temperature is marked
-        with the data manager’s invalid value marker.
+        Receives temperature_updated signal and calls update_value for this sensor.
         """
         if self.designator in self.data_manager.temperature_sensor_names:
             value = self.data_manager.get_latest_sensor_value(self.designator)
-            if value == self.data_manager.INVALID_TEMP_MARKER:
-                self.schematic_label.setLabelText("INVALID")
-                self.schematic_label.setLabelColorRed()
-            else:
-                self.schematic_label.setLabelText(f"{value:.1f} {self.units}")
-                self.schematic_label.setLabelColorDefault()
-            if self.live_plot_enabled and self.plot_window and self.plot_window.isVisible():
-                asyncio.create_task(self.plot_window._on_new_data_for_plot(value))
+            self.update_value(value)
 
-    def _on_pump_feedback_data_update_for_label_and_plot(self, pump_percent: float, flow_kg_per_h: float):
+    def _on_pump_feedback_data_update_for_label_and_plot(self, pump_percent: float, flow1_kg_per_h: float, flow2_kg_per_h: float):
         """
-        Update label and plot for either pump percent or flow feedback.
-
-        Parameters
-        -------
-        pump_percent : float
-            Pump duty cycle in percent.
-        flow_kg_per_h : float
-            Flow rate in kg/h from flow transmitter.
-
-        Notes
-        -------
-        Which value is used depends on the designator: "PumpFeedback" or "FT1024".
+        Receives pump_feedback_updated signal and calls update_value for pump or flow sensors.
+        Note: The signal emits three values, so the method signature must match.
         """
-        value = None
+        value_to_update = None
         if self.designator == "PumpFeedback":
-            value = pump_percent
+            value_to_update = pump_percent
         elif self.designator == "FT1024":
-            value = flow_kg_per_h
+            value_to_update = flow1_kg_per_h # Assuming FT1024 corresponds to the second argument
+        elif self.designator == "FT10106":
+            value_to_update = flow2_kg_per_h # Assuming FT10106 corresponds to the third argument
 
-        if value is not None:
-            # --- MODIFIED: Label text should ONLY be the value + units ---
-            self.schematic_label.setLabelText(f"{value:.1f} {self.units}")
-            self.schematic_label.setLabelColorDefault()
-            # --- END MODIFIED ---
-            if self.live_plot_enabled and self.plot_window and self.plot_window.isVisible():
-                asyncio.create_task(self.plot_window._on_new_data_for_plot(value))
+        if value_to_update is not None:
+            self.update_value(value_to_update)

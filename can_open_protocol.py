@@ -292,40 +292,41 @@ class CanOpen:
         return output
     
     @staticmethod
-    def flow_to_16bitanalog(flow):
-        if  flow == 32.8:
+    def process_to_16bitanalog(process_scale, process_max):
+        if  process_scale == process_max:
             output = 0xFFFF
-        elif flow == 0:
+        elif process_scale <= 0:
             output = 0
         else: 
-            output = (32.8/100)*65535
+            output = (process_scale/process_max)*65535
 
-        return output
+        return int(output)
 
 
     @staticmethod     
     def generate_outmm_msg1(pump_on, pump_speed, mfm1_state, mfm2_state):
 
-        if pump_speed < 0:
-            pump_speed = 0
-        elif pump_speed >100:
-            pump_speed = 100
-        else: 
-            pump_speed = pump_speed
+        # if pump_speed < 0:
+        #     pump_speed = 0
+        # elif pump_speed >100:
+        #     pump_speed = 100
+        # else: 
+        #     pump_speed = pump_speed
 
-        raw_out1 = pump_speed* 655
+        # raw_out1 = pump_speed* 655
+        raw_out1 = CanOpen.process_to_16bitanalog(pump_speed, 100)
 
         raw_out2 = CanOpen.digital_to_16bitanalog(pump_on)
 
-        raw_out3 = CanOpen.flow_to_16bitanalog(mfm1_state)
-        raw_out4 = CanOpen.flow_to_16bitanalog(mfm2_state)
+        raw_out3 = CanOpen.process_to_16bitanalog(mfm1_state, 32.8)
+        raw_out4 = CanOpen.process_to_16bitanalog(mfm2_state, 32.8)
 
         return raw_out1, raw_out2, raw_out3, raw_out4
     
     @staticmethod     
     def generate_outmm_msg2(alicat_state):
 
-        raw_out1 = CanOpen.percent_to_16bitanalog(alicat_state)
+        raw_out1 = CanOpen.process_to_16bitanalog(alicat_state, 250)
 
         return raw_out1
     
@@ -398,7 +399,7 @@ class CanOpen:
                 received_ids = set(self.message_buffer.keys())
                 current_time = time.time()
 
-                if (self.expected_ids == received_ids) or (current_time - self.delta_time >= 0.2):
+                if (self.expected_ids == received_ids) or (current_time - self.delta_time >= 0.4):
                     if current_time - self.delta_time < 0.1:
                         # Too soon since last push, skip this cycle to throttle at 100ms
                         return

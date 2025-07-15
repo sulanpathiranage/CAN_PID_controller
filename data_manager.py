@@ -2,17 +2,20 @@ import asyncio
 import can
 from collections import deque
 from typing import List, Dict, Any, Union
+from datetime import datetime
+import csv
 
 from PySide6.QtCore import QObject, Signal as pyqtSignal
 from fault_manager import FaultManager
 
 
 from can_open_protocol import CanOpen
+from pid_controller import PIDController
 
 class SystemDataManager(QObject):
     pressure_updated = pyqtSignal(list)
     temperature_updated = pyqtSignal(list)
-    pump_feedback_updated = pyqtSignal(float, float, float)
+    pump_feedback_updated = pyqtSignal(float, float, float, float)
     e_stop_toggled = pyqtSignal(bool)
     esv1_state_toggled = pyqtSignal(bool)
     esv2_state_toggled = pyqtSignal(bool)
@@ -25,7 +28,12 @@ class SystemDataManager(QObject):
     interlock2_detected = pyqtSignal(bool, list) # channel_index, [lw, ls, hw, hs]
     interlock3_detected = pyqtSignal(bool, list) # channel_index, [lw, ls, hw, hs]
     interlock4_detected = pyqtSignal(bool, list) # channel_index, [lw, ls, hw, hs]
-
+    interlock_checked = pyqtSignal(bool)
+    start_log = pyqtSignal(bool)
+    log_name  = pyqtSignal(str)
+    pid_output_updated = pyqtSignal(float) 
+    pid_enabled_status_changed = pyqtSignal(bool) 
+    pid_setpoint_updated = pyqtSignal(float)
 
 
     # pt_info = {
@@ -37,17 +45,19 @@ class SystemDataManager(QObject):
     # tc_designators = ["TI10111","TI10115","TI10116","TI10117"]
     pt_info = {
        "PT10110": 30, 
-       "PT10120": 60, 
+       "PT10123": 60, 
        "PT10130": 60, 
-       "PT10118": 60, 
-       "PT10117": 60
+       "PT10120": 60, 
+       "PT10134": 60,
+       "PT10118": 30
     }
-    tc_designators = ["TI10111","TI10115","TI10116","TI10117", "TI01","TI10121", "TI10119"]
+    tc_designators = ["TI10111","TI10115","TI10116","TI10117", "TI01","TI10121", "TI10119","TI10122"]
 
     deditec_info = {
         "PumpFeedback": 100,    # percent
-        "FT1024":       32.8,   # kg/h
-        "FT10106":      32.8    # kg/h
+        "FT10124":      32.8,   # kg/h
+        "FT10106":      32.8,    #kg/h
+        "PIC10126":     250     #psig
     }
 
     pt_designators   = list(pt_info)         
@@ -63,7 +73,7 @@ class SystemDataManager(QObject):
         self._deditec_data = [deque([0.0] * self._history_len, maxlen=self._history_len) for _ in range(len(self.deditec_feedback))]
         
         self._eStopValue = False
-        
+        self.interlock_begin = False
         self._last_pressures = [0.0] * len(self.pt_designators)
         self._last_temps = [0.0] * len(self.tc_designators)
         self._last_deditec = [0.0] * len(self.deditec_feedback)  
@@ -87,12 +97,20 @@ class SystemDataManager(QObject):
 
         self._commanded_pump_on = 0
         self._commanded_manual_speed = 0
-        self._commanded_pid_output = None 
+        self.pid_controller = PIDController() 
+        self._pid_enabled = False #
+        self._commanded_pid_output = 0.0 
+        self._pid_setpoint = 0.0
+        self._last_pid_calc_time = asyncio.get_event_loop().time()
+
+        self.pid_controller.set_params(1.0, 0.0, 0.0)
+        self.pid_controller.set_setpoint(self._pid_setpoint)
 
         self._sensor_data_sources: Dict[str, Union[deque, str]] = {}
 
         self.mfm1_setpoint_updated.emit(self.mfm_setpoints[0])
         self.mfm2_setpoint_updated.emit(self.mfm_setpoints[1])
+        self.pid_enabled_status_changed.emit(self._pid_enabled)
         
         for i, designator in enumerate(self.pt_designators):
             if i < len(self._ch_data):
@@ -112,6 +130,130 @@ class SystemDataManager(QObject):
             else:
                 print(f"Warning: _deditec_data does not have enough deques for {designator}")
 
+        self._logging_enabled = False
+        self._log_file = None
+        self._csv_writer = None
+        self._log_filename = ""
+        self._last_log_time = 0.0 
+        self.start_log.connect(self.toggle_logging) 
+        self.log_name.connect(self.set_log_filename)
+
+
+    def set_log_filename(self, name: str):
+        """Sets the base filename for the log file."""
+        self._log_filename = name
+        print(f"Log filename set to: {self._log_filename}")
+
+    def toggle_logging(self, enable: bool):
+        """
+        Enables or disables logging to a CSV file.
+        A new file is created each time logging is enabled.
+        """
+        if enable and not self._logging_enabled:
+            # Generate a timestamped filename if no base name is set
+            if not self._log_filename:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                log_file_path = f"log_data_{timestamp}.csv"
+            else:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                log_file_path = f"{self._log_filename}_{timestamp}.csv"
+
+            try:
+                self._log_file = open(log_file_path, 'w', newline='')
+                self._csv_writer = csv.writer(self._log_file)
+
+                # Write header row
+                header = ["Timestamp"]
+                header.extend(self.pt_designators) # Pressure sensors
+                header.extend(self.tc_designators) # Temperature sensors
+                header.extend(self.deditec_feedback) # Deditec feedbacks (Flow, PumpFeedback)
+                header.extend(["MFM1_Setpoint", "MFM2_Setpoint", "PIC_Setpoint"]) # Command setpoints
+                header.extend(["Pump_On_Cmd", "Manual_Pump_Speed_Cmd", "PID_Output_Cmd"]) # Commanded states
+                header.extend(["ESV1_State_Cmd", "ESV2_State_Cmd"]) # ESV commands
+                header.extend(["E-Stop", "Interlock_Flag"]) # System states
+
+                self._csv_writer.writerow(header)
+                self._logging_enabled = True
+                self._last_log_time = asyncio.get_event_loop().time() # Reset time on start
+                self._logger_task = asyncio.create_task(self._log_data_task()) 
+                print(f"Logging started to: {log_file_path}")
+
+            except Exception as e:
+                print(f"Error starting log: {e}")
+                self.can_error.emit(f"Log start error: {e}")
+                self._logging_enabled = False
+                if self._log_file:
+                    self._log_file.close()
+                self._log_file = None
+                self._csv_writer = None
+
+        elif not enable and self._logging_enabled:
+            if self._log_file:
+                self._log_file.close()
+                print(f"Logging stopped for: {self._log_filename}")
+            self._logging_enabled = False
+            self._log_file = None
+            self._csv_writer = None
+            self._log_filename = "" 
+            try:
+                self._logger_task.cancel() 
+            except:
+                print("Couldn't close log task!")
+
+
+    async def _log_data_task(self):
+        """Asynchronous task to periodically log system data."""
+        log_interval = 0.5 # 2 Hz logging rate (every 0.5 seconds)
+
+        while True:
+            await asyncio.sleep(log_interval)
+
+            if self._logging_enabled and self._csv_writer:
+                try:
+                    current_time = asyncio.get_event_loop().time()
+                    # Only log if enough time has passed, ensuring fixed frequency
+                    if (current_time - self._last_log_time) >= log_interval - 0.001: # Small tolerance
+                        self._last_log_time = current_time
+
+                        row_data = [datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")]
+
+                        # Add sensor data
+                        for designator in self.pt_designators:
+                            row_data.append(self.get_latest_sensor_value(designator))
+                        for designator in self.tc_designators:
+                            row_data.append(self.get_latest_sensor_value(designator))
+                        for designator in self.deditec_feedback:
+                            row_data.append(self.get_latest_sensor_value(designator))
+
+                        # Add commanded setpoints
+                        row_data.append(self.mfm_setpoints[0])
+                        row_data.append(self.mfm_setpoints[1])
+                        row_data.append(self._pid_setpoint) # Use _pid_setpoint for the PID setpoint
+
+                        # Add commanded states
+                        row_data.append(self._commanded_pump_on)
+                        row_data.append(self._commanded_manual_speed)
+                        row_data.append(self._commanded_pid_output)
+
+                        # Add ESV states
+                        row_data.append(self.esv_state[0])
+                        row_data.append(self.esv_state[1])
+
+                        # Add system flags
+                        row_data.append(self._eStopValue)
+                        row_data.append(self.interlock_flag)
+
+                        self._csv_writer.writerow(row_data)
+                        self._log_file.flush() 
+
+                except asyncio.CancelledError:
+                    print("Log data task cancelled.")
+                    break
+                except Exception as e:
+                    print(f"Error writing to log file: {e}")
+                    self.can_error.emit(f"Log write error: {e}")
+                    # Consider stopping logging if a persistent error occurs
+                    # self.toggle_logging(False)
 
     @property
     def history_len(self) -> int:
@@ -141,6 +283,38 @@ class SystemDataManager(QObject):
 
                 self.esv_state[:] = [0] * len(self.esv_state)
 
+    def set_pid_kp(self, value: float):
+        self.pid_controller.kp = value
+
+    def set_pid_ki(self, value: float):
+        self.pid_controller.ki = value
+
+    def set_pid_kd(self, value: float):
+        self.pid_controller.kd = value
+
+    def set_pid_setpoint(self, value: float):
+        self.pid_controller.set_setpoint(value)
+        self._pid_setpoint = value
+        self.pid_setpoint_updated.emit(value) 
+
+    def set_pid_enabled(self, enabled: bool):
+        if self._pid_enabled != enabled:
+            self._pid_enabled = enabled
+            self.pid_enabled_status_changed.emit(enabled)
+            if enabled:
+                self.pid_controller.reset() # Important: reset integral/derivative on enable
+                self.pid_controller.set_setpoint(self._pid_setpoint)
+            else:
+
+                self._commanded_pid_output = 0.0
+                self.pid_output_updated.emit(0.0) 
+
+
+    def set_interlock_begin(self, value: bool):
+        if self.interlock_begin != value:
+            self.interlock_begin = value
+            self.interlock_checked.emit(value)
+        
     def set_pic(self, value: float):
         if self.pic_setpoint != value:
             self.pic_setpoint = value
@@ -168,6 +342,7 @@ class SystemDataManager(QObject):
         self._esv2_cmd = state
         self.update_commanded_esv_state()
         self.esv2_state_toggled.emit(state)
+
 
     @property
     def last_pressures(self) -> List[float]:
@@ -202,6 +377,9 @@ class SystemDataManager(QObject):
         return self.deditec_feedback
 
     def _bar_to_psi(self, barg: float) -> float:
+        return barg * 14.5038
+    
+    def _psi_to_bar(self, barg: float) -> float:
         return barg * 14.5038
     
     def get_pic(self) -> float:
@@ -294,12 +472,39 @@ class SystemDataManager(QObject):
 
         self.pump_feedback_updated.emit(
             self._last_deditec[self.deditec_feedback.index("PumpFeedback")],
-            self._last_deditec[self.deditec_feedback.index("FT1024")],
-            self._last_deditec[self.deditec_feedback.index("FT10106")]
+            self._last_deditec[self.deditec_feedback.index("FT10124")],
+            self._last_deditec[self.deditec_feedback.index("FT10106")],
+            self._last_deditec[self.deditec_feedback.index("PIC10126")]
         )
 
         self.interlock_trigger()
 
+
+    def _perform_pid_calculation(self):
+        """
+        Performs the PID calculation based on FT10124 feedback.
+        Should be called periodically in the data processing loop.
+        """
+        if self._pid_enabled:
+            current_time = asyncio.get_event_loop().time()
+            dt = current_time - self._last_pid_calc_time
+            self._last_pid_calc_time = current_time
+
+            measured_value = self.get_latest_sensor_value("FT10124")
+
+            if measured_value is not None:
+                pid_output = self.pid_controller.calculate(measured_value, dt)
+
+                self._commanded_pid_output = pid_output
+
+                self.pid_output_updated.emit(pid_output)
+            else:
+                # Handle case where FT10124 data might not be available or is invalid
+                print("Warning: FT10124 data not available for PID calculation.")
+                self._commanded_pid_output = 0.0 # Safe default
+                self.pid_output_updated.emit(0.0)
+        # Else, if PID is not enabled, _commanded_pid_output remains at its last value
+        # (which should be 0.0 if it was properly disabled by set_pid_enabled)
 
 
     def reset_deditec_data(self):
@@ -307,7 +512,7 @@ class SystemDataManager(QObject):
             self._last_deditec[i] = 0.0
             self._deditec_data[i].clear()
             self._deditec_data[i].extend([0.0] * self._history_len)
-        self.pump_feedback_updated.emit(0.0, 0.0,0.0)
+        self.pump_feedback_updated.emit(0.0, 0.0,0.0, 0.0)
 
 
     def reset_pressure_data(self):
@@ -329,6 +534,10 @@ class SystemDataManager(QObject):
     def toggle_e_stop_state(self):
         """Toggles the E-STOP state."""
         self.eStopValue = not self.eStopValue
+
+    def toggle_interlocks(self):
+        """Toggles the E-STOP state."""
+        self.interlock_begin = not self.interlock_begin
 
     def update_commanded_pump_state(self, pump_on: int, manual_speed: int, pid_output: Union[float, None]):
         """
@@ -411,8 +620,7 @@ class SystemDataManager(QObject):
         This method uses get_latest_sensor_value for sensor readings.
         It should be called after sensor data has been updated.
         """
-        def psi(barg):
-            return barg * 14.5038
+  
         
         no_hi_limit = 1e6
         no_lo_limit = -1e6
@@ -422,24 +630,29 @@ class SystemDataManager(QObject):
         pt10120_val = self.get_latest_sensor_value("PT10120")
         ti10119_val = self.get_latest_sensor_value("TI10119") 
         try:
-            ft_index = self.deditec_feedback.index("FT1024")
-            ft1024_val = self._last_deditec[ft_index]
+            ft_index = self.deditec_feedback.index("FT10124")
+            FT10124_val = self._last_deditec[ft_index]
         except ValueError:
-            ft1024_val = 0.0
+            FT10124_val = 0.0
+
+        interlock1 = [False, False, False, False]
+        interlock2 = [False, False, False, False]
+        interlock3 = [False, False, False, False]
+        interlock4 = [False, False, False, False]
 
 
 
-
-        interlock1 = FaultManager.limit_fault(pt10110_val, self._bar_to_psi(2), no_lo_limit, self._bar_to_psi(7), no_hi_limit) 
-    
-        interlock2 = FaultManager.limit_fault(pt10120_val, self._bar_to_psi(15), no_lo_limit, self._bar_to_psi(19), self._bar_to_psi(20))
-        if ti10119_val == self.INVALID_TEMP_MARKER:
-            interlock3 = [False, False, False, False] 
-        else:
-            interlock3 = FaultManager.limit_fault(ti10119_val, 47, 45, 55, 60) 
-            # interlock3 = FaultManager.limit_fault(ti10119_val, 0, 45, 55, 60)  #FOR TESTING ONLY!!
-        # interlock4 = FaultManager.limit_fault(ft1024_val, 25, 20, 675, no_hi_limit)
-        interlock4 = FaultManager.limit_fault(ft1024_val, no_lo_limit, 20, 675, no_hi_limit) #FOR TESTING ONLY!!
+        if self.interlock_begin:
+            interlock1 = FaultManager.limit_fault(pt10110_val, self._bar_to_psi(2), no_lo_limit, self._bar_to_psi(7), no_hi_limit) 
+        
+            interlock2 = FaultManager.limit_fault(pt10120_val, self._bar_to_psi(15), no_lo_limit, self._bar_to_psi(19), self._bar_to_psi(20))
+            if ti10119_val == self.INVALID_TEMP_MARKER:
+                interlock3 = [True, True, True, True] 
+            else:
+                interlock3 = FaultManager.limit_fault(ti10119_val, 47, 45, 55, 60) 
+                # interlock3 = FaultManager.limit_fault(ti10119_val, 0, 45, 55, 60)  #FOR TESTING ONLY!!
+            # interlock4 = FaultManager.limit_fault(FT10124_val, 25, 20, 675, no_hi_limit)
+            interlock4 = FaultManager.limit_fault(FT10124_val, no_lo_limit, 20, 675, no_hi_limit) #FOR TESTING ONLY!!
 
 
         if any(interlock1):
@@ -497,7 +710,9 @@ class SystemDataManager(QObject):
             finally:
                 self._can_data_queue.task_done()
 
-        await(0.1)
+            await asyncio.sleep(0.1)
+
+
 
 
 
