@@ -1,7 +1,17 @@
 import os
+
 os.environ["PYQTGRAPH_QT_LIB"] = "PySide6"
 
+# Disable PySide6 signature features before any imports
+os.environ['PYSIDE_DISABLE_SIGNATURE'] = '1'
+os.environ['PYSIDE_DISABLE_SIGNATURE_LOADING'] = '1'
+
 import sys
+# Set UTF-8 encoding
+if sys.platform == "win32":
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+
+import locale
 import asyncio
 from typing import List, Dict, Any, Union, Tuple
 
@@ -28,7 +38,6 @@ from app_stylesheets import Stylesheets
 from NH3_pump_control import NH3PumpControlScene
 from NH3_vaporizer_control import NH3VaporizerControlScene
 from data_manager import SystemDataManager
-
 
 
 class CustomLiveAxisRange(LiveAxisRange):
