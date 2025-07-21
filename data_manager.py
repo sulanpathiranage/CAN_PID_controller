@@ -600,7 +600,7 @@ class SystemDataManager(QObject):
         """
         if not self._can_connected:
             try:
-                self._bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="virtual", bitrate=500000)
+                self._bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="pcan", bitrate=500000)
                 while not self._can_data_queue.empty():
                     self._can_data_queue.get_nowait()
                     self._can_data_queue.task_done()

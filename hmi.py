@@ -385,13 +385,13 @@ class ProcessControlWidgets(QWidget):
         self.mfm1_slider = QDoubleSpinBox()
         self.mfm1_slider.setRange(0.0, 100.0)
         self.mfm1_slider.valueChanged.connect(lambda v: self.data_manager.set_mfm1(float(v)))
-        layout.addWidget(QLabel("MFM 1 Setpoint (max 32.8 kg/h):"), 0, 0)
+        layout.addWidget(QLabel("FIC 10106 Setpoint (max 32.8 kg/h):"), 0, 0)
         layout.addWidget(self.mfm1_slider, 0, 1)
 
         self.mfm2_slider = QDoubleSpinBox()
         self.mfm2_slider.setRange(0.0, 100.0)
         self.mfm2_slider.valueChanged.connect(lambda v: self.data_manager.set_mfm2(float(v)))
-        layout.addWidget(QLabel("MFM 2 Setpoint (max 32.8 kg/h):"), 1, 0)
+        layout.addWidget(QLabel("FIC 10124 Setpoint (max 32.8 kg/h):"), 1, 0)
         layout.addWidget(self.mfm2_slider, 1, 1)
 
         self.pic_slider = QDoubleSpinBox()
