@@ -34,7 +34,8 @@ class SystemDataManager(QObject):
     pid_output_updated = pyqtSignal(float) 
     pid_enabled_status_changed = pyqtSignal(bool) 
     pid_setpoint_updated = pyqtSignal(float)
-
+    pump_enabled = pyqtSignal(bool)
+    pump_speed_updated = pyqtSignal(float)
 
     # pt_info = {
     #     "PT10110": 30,
@@ -46,10 +47,11 @@ class SystemDataManager(QObject):
     pt_info = {
        "PT10110": 30, 
        "PT10123": 60, 
-       "PT10130": 60, 
+       "PI10130": 60, 
        "PT10120": 60, 
-       "PT10134": 60,
-       "PT10118": 30
+       "PT10134": 60, 
+       "PT10118": 30, 
+       "INLET": 60 
     }
     tc_designators = ["TI10111","TI10115","TI10116","TI10117", "TI01","TI10121", "TI10119","TI10122"]
 
@@ -271,6 +273,7 @@ class SystemDataManager(QObject):
     def eStopValue(self) -> bool:
         return self._eStopValue
 
+
     @eStopValue.setter
     def eStopValue(self, value: bool):
         if self._eStopValue != value:
@@ -282,6 +285,15 @@ class SystemDataManager(QObject):
                 self._commanded_pid_output = 0.0
 
                 self.esv_state[:] = [0] * len(self.esv_state)
+
+    def set_pump_enabled(self, enabled: bool):
+        self._commanded_pump_on = int(enabled)
+        self.pump_enabled.emit(bool(self._commanded_pump_on))
+
+    def set_pump_speed(self, speed: float):
+        self._commanded_manual_speed = max(0.0, min(100.0, speed))
+        self.pump_speed_updated.emit(self._commanded_manual_speed)
+
 
     def set_pid_kp(self, value: float):
         self.pid_controller.kp = value
@@ -479,6 +491,26 @@ class SystemDataManager(QObject):
 
         self.interlock_trigger()
 
+    # def update_commanded_pump_state(self, pump_on: int, manual_speed: int, pid_output: Union[float, None]):
+    #     """
+    #     Updates the internal state for the pump sender task.
+    #     Called by the GUI (PumpControlWindow) when pump controls or PID state changes.
+    #     """
+    #     if not self.eStopValue and not self.interlock_flag:
+    #         self._commanded_pump_on = pump_on
+    #         self._commanded_manual_speed = manual_speed
+    #         self._commanded_pid_output = pid_output
+    #     else:
+    #         self._commanded_pump_on = 0
+    #         self._commanded_manual_speed = 0
+    #         self._commanded_pid_output = 0.0
+
+    def update_commanded_esv_state(self):
+        if self.eStopValue or self.interlock_flag:
+            self.esv_state = [0, 0]
+        else:
+            self.esv_state[0] = int(self._esv1_cmd)
+            self.esv_state[1] = int(self._esv2_cmd)
 
     def _perform_pid_calculation(self):
         """
@@ -499,12 +531,9 @@ class SystemDataManager(QObject):
 
                 self.pid_output_updated.emit(pid_output)
             else:
-                # Handle case where FT10124 data might not be available or is invalid
                 print("Warning: FT10124 data not available for PID calculation.")
                 self._commanded_pid_output = 0.0 # Safe default
                 self.pid_output_updated.emit(0.0)
-        # Else, if PID is not enabled, _commanded_pid_output remains at its last value
-        # (which should be 0.0 if it was properly disabled by set_pid_enabled)
 
 
     def reset_deditec_data(self):
@@ -531,6 +560,28 @@ class SystemDataManager(QObject):
             self._temp_data[i].extend([0.0] * self._history_len)
         self.temperature_updated.emit(self._last_temps)
 
+
+    def reset_states(self):
+        # self._commanded_manual_speed = 0
+        # self._commanded_pid_output = 0.0
+        # self._pid_enabled = False
+        # self._pid_setpoint = 0.0
+
+        # self.pump_speed_updated.emit(0)
+        # self.pid_output_updated.emit(0.0)
+        # self.pid_enabled_status_changed.emit(False)
+        # self.pid_setpoint_updated.emit(0.0)
+        self.set_pump_enabled(False)
+        self.set_esv1(False)
+        self.set_esv2(False)
+        self.set_mfm1(0)
+        self.set_mfm2(0)
+        self.set_pic(0)
+        self.set_pump_speed(0)
+        self.set_pid_enabled(False)
+
+
+
     def toggle_e_stop_state(self):
         """Toggles the E-STOP state."""
         self.eStopValue = not self.eStopValue
@@ -539,26 +590,6 @@ class SystemDataManager(QObject):
         """Toggles the E-STOP state."""
         self.interlock_begin = not self.interlock_begin
 
-    def update_commanded_pump_state(self, pump_on: int, manual_speed: int, pid_output: Union[float, None]):
-        """
-        Updates the internal state for the pump sender task.
-        Called by the GUI (PumpControlWindow) when pump controls or PID state changes.
-        """
-        if not self.eStopValue and not self.interlock_flag:
-            self._commanded_pump_on = pump_on
-            self._commanded_manual_speed = manual_speed
-            self._commanded_pid_output = pid_output
-        else:
-            self._commanded_pump_on = 0
-            self._commanded_manual_speed = 0
-            self._commanded_pid_output = 0.0
-
-    def update_commanded_esv_state(self):
-        if self.eStopValue or self.interlock_flag:
-            self.esv_state = [0, 0]
-        else:
-            self.esv_state[0] = int(self._esv1_cmd)
-            self.esv_state[1] = int(self._esv2_cmd)
 
     def toggle_can_connection(self):
         """
@@ -736,6 +767,9 @@ class SystemDataManager(QObject):
                 
                 self.update_commanded_esv_state() 
                 system_shutdown = self._eStopValue or self.interlock_flag
+                if system_shutdown:
+                    self.reset_states()
+
                 
                 if self._can_connected and self._bus:
                     await CanOpen.send_outputs(self._bus, system_shutdown, pump_state, self.esv_state, self.mfm_setpoints, self.pic_setpoint)
