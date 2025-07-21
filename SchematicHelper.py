@@ -1,23 +1,22 @@
-import sys
 from datetime import datetime
-import time
-import random
 import asyncio
-
 import pyqtgraph as pg
-
 from app_stylesheets import Stylesheets
 
-from PySide6.QtCore import (
+from collections import deque
+from typing import List,Union, Tuple, Callable
+
+from data_manager import SystemDataManager
+
+from PyQt6.QtCore import (
     Qt,
     QPointF,
     QRectF,
     QLineF,
-    Signal,
-    QTimer
+    pyqtSignal as Signal,  # Alias to match PySide6's Signal
 )
 
-from PySide6.QtGui import (
+from PyQt6.QtGui import (
     QPolygonF,
     QFont,
     QColor,
@@ -25,27 +24,39 @@ from PySide6.QtGui import (
     QPainterPath
 )
 
-from PySide6.QtWidgets import (
-    QApplication,
-    QWidget,
-    QVBoxLayout, QHBoxLayout,
-    QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
-    QFormLayout, QGridLayout,
-    QSizePolicy, QMessageBox,
-    QDoubleSpinBox,
-    QScrollArea, QTabWidget,
+from PyQt6.QtWidgets import (
+    QVBoxLayout, QLabel, QDoubleSpinBox,
     QGraphicsView, QGraphicsPolygonItem, QGraphicsRectItem,
     QGraphicsLineItem, QGraphicsEllipseItem,
-    QDialog
+    QDialog,
+    QPushButton, QGraphicsProxyWidget, QGraphicsScene, QGraphicsTextItem
 )
 
-from PySide6.QtWidgets import QPushButton, QGraphicsProxyWidget, QGraphicsScene, QGraphicsTextItem
-import pyqtgraph as pg
-from collections import deque
-from typing import List, Dict, Any, Union, Tuple
 
-from data_manager import SystemDataManager
-from typing import Callable
+# from PySide6.QtCore import (
+#     Qt,
+#     QPointF,
+#     QRectF,
+#     QLineF,
+#     Signal,
+# )
+
+# from PySide6.QtGui import (
+#     QPolygonF,
+#     QFont,
+#     QColor,
+#     QPen,
+#     QPainterPath
+# )
+
+# from PySide6.QtWidgets import (
+#     QVBoxLayout, QLabel, QDoubleSpinBox,
+#     QGraphicsView, QGraphicsPolygonItem, QGraphicsRectItem,
+#     QGraphicsLineItem, QGraphicsEllipseItem,
+#     QDialog
+# )
+# from PySide6.QtWidgets import QPushButton, QGraphicsProxyWidget, QGraphicsScene, QGraphicsTextItem
+
 
 
 class SchematicHelperFunctions:
@@ -217,7 +228,7 @@ class SchematicHelperFunctions:
         polygon_item = QGraphicsPolygonItem(polygon)
         text_item = QGraphicsTextItem(text)
         text_item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        text_item.setDefaultTextColor(Qt.black) # Set text color to BLACK
+        text_item.setDefaultTextColor(Qt.GlobalColor.black) # Set text color to BLACK
         text_item.setParentItem(polygon_item)
         text_item.setPos(width/3, -height)
         polygon_item.setPos(xPos, yPos)
@@ -262,7 +273,7 @@ class SchematicHelperFunctions:
         circle_item = QGraphicsEllipseItem(rect)
         text_item = QGraphicsTextItem(text)
         text_item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        text_item.setDefaultTextColor(Qt.black) # Set text color to BLACK
+        text_item.setDefaultTextColor(Qt.GlobalColor.black) # Set text color to BLACK
         text_item.setParentItem(circle_item)
         text_rect = text_item.boundingRect()
         text_item.setPos(
@@ -300,14 +311,14 @@ class SchematicHelperFunctions:
 
         top_text_item = QGraphicsTextItem(top_text)
         top_text_item.setFont(QFont("Arial", 8, QFont.Weight.Bold))
-        top_text_item.setDefaultTextColor(Qt.black) # Set text color to BLACK
+        top_text_item.setDefaultTextColor(Qt.GlobalColor.black) # Set text color to BLACK
         top_text_rect = top_text_item.boundingRect()
         top_text_item.setPos((size - top_text_rect.width()) / 2, center_y - top_text_rect.height())
         top_text_item.setParentItem(box_item)
 
         bottom_text_item = QGraphicsTextItem(bottom_text)
         bottom_text_item.setFont(QFont("Arial", 8, QFont.Weight.Bold))
-        bottom_text_item.setDefaultTextColor(Qt.black) # Set text color to BLACK
+        bottom_text_item.setDefaultTextColor(Qt.GlobalColor.black) # Set text color to BLACK
         bottom_text_rect = bottom_text_item.boundingRect()
         bottom_text_item.setPos((size - bottom_text_rect.width()) / 2, center_y)
         bottom_text_item.setParentItem(box_item)
@@ -333,7 +344,7 @@ class SchematicHelperFunctions:
         box_item = QGraphicsRectItem(rect)
         text_item = QGraphicsTextItem(label)
         text_item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        text_item.setDefaultTextColor(Qt.black) # Set text color to BLACK
+        text_item.setDefaultTextColor(Qt.GlobalColor.black) # Set text color to BLACK
         text_item.setParentItem(box_item)
         text_rect = text_item.boundingRect()
         text_item.setPos(
@@ -393,7 +404,7 @@ class SchematicHelperFunctions:
                 continue
             label = QGraphicsTextItem(f"{x}")
             label.setFont(font)
-            label.setDefaultTextColor(Qt.darkGray) # Set grid labels to dark gray
+            label.setDefaultTextColor(Qt.GlobalColor.darkGray) # Set grid labels to dark gray
             label.setPos(x + 2, 2)
             label.setZValue(-1)
             label.setData(0, GRID_TAG)
@@ -404,7 +415,7 @@ class SchematicHelperFunctions:
                 continue
             label = QGraphicsTextItem(f"{y}")
             label.setFont(font)
-            label.setDefaultTextColor(Qt.darkGray) # Set grid labels to dark gray
+            label.setDefaultTextColor(Qt.GlobalColor.darkGray) # Set grid labels to dark gray
             label.setPos(2, y + 2)
             label.setZValue(-1)
             label.setData(0, GRID_TAG)
@@ -443,7 +454,7 @@ class SchematicHelperFunctions:
             QPointF(xPos + size, yPos + size/2)
         ])
         tri1_item = QGraphicsPolygonItem(tri1)
-        tri1_item.setPen(QPen(Qt.black, 2))
+        tri1_item.setPen(QPen(Qt.GlobalColor.black, 2))
         scene.addItem(tri1_item)
 
         tri2 = QPolygonF([
@@ -452,18 +463,18 @@ class SchematicHelperFunctions:
             QPointF(xPos + size, yPos + size/2)
         ])
         tri2_item = QGraphicsPolygonItem(tri2)
-        tri2_item.setPen(QPen(Qt.black, 2))
+        tri2_item.setPen(QPen(Qt.GlobalColor.black, 2))
         scene.addItem(tri2_item)
 
         line = QLineF(xPos, yPos, xPos + size * 2, yPos)
         line_item = QGraphicsLineItem(line)
-        line_item.setPen(QPen(Qt.black, 2))
+        line_item.setPen(QPen(Qt.GlobalColor.black, 2))
         scene.addItem(line_item)
 
         text_item = QGraphicsTextItem(label)
         font = QFont("Arial", 8, QFont.Weight.Bold)
         text_item.setFont(font)
-        text_item.setDefaultTextColor(Qt.black) # Set text color to BLACK
+        text_item.setDefaultTextColor(Qt.GlobalColor.black) # Set text color to BLACK
         text_item.setPos(xPos + size / 2, yPos + size / 2 + 5)
         scene.addItem(text_item)
     
@@ -512,7 +523,7 @@ class SchematicHelperFunctions:
         if label_text:
             label_item = QGraphicsTextItem(label_text)
             label_item.setFont(QFont("Arial", 8, QFont.Weight.Bold))
-            label_item.setDefaultTextColor(Qt.black) # Match other icon text
+            label_item.setDefaultTextColor(Qt.GlobalColor.black) # Match other icon text
             # Position the label text above the spin box. Adjust yPos for the spin box itself.
             label_item.setPos(xPos, yPos - label_item.boundingRect().height() - 5) # 5 pixels above input
             scene.addItem(label_item)

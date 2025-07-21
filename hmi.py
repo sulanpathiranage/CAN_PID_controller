@@ -1,15 +1,10 @@
 import os
 
-os.environ["PYQTGRAPH_QT_LIB"] = "PySide6"
+# os.environ["PYQTGRAPH_QT_LIB"] = "PySide6"
 
-# Disable PySide6 signature features before any imports
-os.environ['PYSIDE_DISABLE_SIGNATURE'] = '1'
-os.environ['PYSIDE_DISABLE_SIGNATURE_LOADING'] = '1'
 
 import sys
-# Set UTF-8 encoding
-if sys.platform == "win32":
-    os.environ['PYTHONIOENCODING'] = 'utf-8'
+
 
 import locale
 import asyncio
@@ -23,14 +18,26 @@ from pyqtgraph.graphicsItems.LegendItem import LegendItem
 
 
 # PySide6 Imports
-from PySide6.QtWidgets import (
+# from PySide6.QtWidgets import (
+#     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+#     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
+#     QGridLayout, QSizePolicy, QMessageBox,
+#     QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget
+# )
+# from PySide6.QtCore import Qt, QTimer, QObject, Signal as pyqtSignal
+# from PySide6.QtGui import QFont, QPen, QBrush, QColor
+
+
+# PyQt6 Imports (aliased to match PySide6 names)
+from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
     QGridLayout, QSizePolicy, QMessageBox,
     QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget
 )
-from PySide6.QtCore import Qt, QTimer, QObject, Signal as pyqtSignal
-from PySide6.QtGui import QFont, QPen, QBrush, QColor
+from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal as Signal
+from PyQt6.QtGui import QFont, QPen, QBrush, QColor
+
 
 # Local imports
 from pid_controller import PIDController
@@ -60,13 +67,13 @@ class CustomLiveAxisRange(LiveAxisRange):
             x_max = num_points * self.tick_duration
             x_min = x_max - window_seconds
 
-        self.set_range(x_min, x_max)
+        self.set_range(x_min, x_max) # type: ignore
 
 class PyqtgraphPlotWidget(QWidget):
     def __init__(self, data_manager: SystemDataManager):
         super().__init__()
         self.data_manager = data_manager
-        self.layout = QHBoxLayout(self)
+        self.layout = QHBoxLayout(self) # type: ignore
         plot_layout = QVBoxLayout()
         self.history_len = self.data_manager.history_len
 
@@ -77,7 +84,7 @@ class PyqtgraphPlotWidget(QWidget):
 
         for designator in self.data_manager.pressure_sensor_names:
             widget, connector, line = self._create_single_sensor_plot(
-                plot_layout, designator, Qt.green, 0, 65)
+                plot_layout, designator, Qt.GlobalColor.green, 0, 65)
             self.pressure_plot_elements[designator] = (widget, connector, line)
 
         self.temp_widget = LivePlotWidget(
@@ -94,7 +101,17 @@ class PyqtgraphPlotWidget(QWidget):
         plot_layout.addWidget(self.temp_legend_widget) 
 
 
-        temp_colors = [Qt.red, Qt.blue, Qt.darkYellow, Qt.magenta, Qt.cyan, Qt.gray, Qt.darkGreen, Qt.darkCyan]
+        # temp_colors = [Qt.red, Qt.blue, Qt.darkYellow, Qt.magenta, Qt.cyan, Qt.gray, Qt.darkGreen, Qt.darkCyan]
+        temp_colors = [
+            QColor(Qt.GlobalColor.red),
+            QColor(Qt.GlobalColor.blue),
+            QColor(Qt.GlobalColor.darkYellow),
+            QColor(Qt.GlobalColor.magenta),
+            QColor(Qt.GlobalColor.cyan),
+            QColor(Qt.GlobalColor.gray),
+            QColor(Qt.GlobalColor.darkGreen),
+            QColor(Qt.GlobalColor.darkCyan),
+        ]
         # temp_symbols = ['s', 't', 'd', 'p', 'h', '+', 'x'] # Different symbols for clarity
 
         for i, designator in enumerate(self.data_manager.temperature_sensor_names):
@@ -123,7 +140,7 @@ class PyqtgraphPlotWidget(QWidget):
 
         if self.data_manager.deditec_feedback:
             flow_name = self.data_manager.deditec_feedback[0]
-            widget, connector, line = self._create_single_sensor_plot(plot_layout, flow_name, Qt.cyan, 0, 101)
+            widget, connector, line = self._create_single_sensor_plot(plot_layout, flow_name, Qt.GlobalColor.cyan, 0, 101)
             self.flow_plot_elements[flow_name] = (widget, connector, line)
             
 
@@ -205,7 +222,7 @@ class PermanentRightHandDisplay(QWidget):
         self._interlock_labels: list[QLabel] = []
         for idx in range(1, 5):
             lbl = QLabel(f"Interlock {idx}: OK")
-            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet(Stylesheets.LabelStyleGreen())   # green “OK”
             layout.addWidget(lbl)
             self._interlock_labels.append(lbl)
@@ -289,53 +306,69 @@ class PermanentRightHandDisplay(QWidget):
 
 
 class PumpControlWidget(QWidget):
-    def __init__(self):
+    def __init__(self, data_manager: SystemDataManager):
         super().__init__()
+        self.data_manager = data_manager
         layout = QVBoxLayout(self)
 
         group = QGroupBox("Pump Control")
         group.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         form_layout = QGridLayout(group)
 
+        # Pump On/Off
         self.pump_on_checkbox = QCheckBox("Pump ON")
-        self.pump_on_checkbox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         form_layout.addWidget(QLabel("Pump State:"), 0, 0)
         form_layout.addWidget(self.pump_on_checkbox, 0, 1, 1, 2)
+        self.pump_on_checkbox.stateChanged.connect(
+            lambda state: self.data_manager.set_pump_enabled(state == Qt.Checked)
+        )
 
+        # Speed controls
         self.speed_slider = QSlider(Qt.Orientation.Horizontal)
         self.speed_slider.setRange(0, 100)
-        self.speed_slider.setValue(0)
-
-        self.speed_entry = QLineEdit("0", fixedWidth=50, alignment=Qt.AlignmentFlag.AlignCenter)
-
         form_layout.addWidget(QLabel("Speed:"), 1, 0)
         form_layout.addWidget(self.speed_slider, 1, 1)
+
+        self.speed_entry = QLineEdit("0")
+        self.speed_entry.setFixedWidth(50)
+        self.speed_entry.setAlignment(Qt.AlignmentFlag.AlignCenter)
         form_layout.addWidget(self.speed_entry, 1, 2)
 
+        # PID Output
         self.output_label = QLabel("PID Output: -- %")
         form_layout.addWidget(self.output_label, 2, 0, 1, 3)
-
-        self.speed_slider.valueChanged.connect(self.update_entry)
-        self.speed_entry.editingFinished.connect(self.update_slider)
 
         layout.addWidget(group)
         layout.addStretch(1)
 
+        # Sync interactions
+        self.speed_slider.valueChanged.connect(self._on_slider_changed)
+        self.speed_entry.editingFinished.connect(self._on_entry_changed)
 
+        # Feedback from data_manager
+        self.data_manager.pump_enabled.connect(self.pump_on_checkbox.setChecked)
+        self.data_manager.pump_speed_updated.connect(self.speed_slider.setValue)
+        self.data_manager.pump_speed_updated.connect(
+            lambda v: self.speed_entry.setText(str(int(v)))
+        )
+        self.data_manager.pid_output_updated.connect(
+            lambda val: self.output_label.setText(f"PID Output: {val:.1f} %")
+        )
 
-    def update_entry(self, val: int):
-        self.speed_entry.setText(str(val))
+    def _on_slider_changed(self, value: int):
+        self.speed_entry.setText(str(value))
+        self.data_manager.set_pump_speed(value)
 
-    def update_slider(self):
+    def _on_entry_changed(self):
         try:
-            val = int(self.speed_entry.text())
-            if 0 <= val <= 100:
-                self.speed_slider.setValue(val)
+            value = int(self.speed_entry.text())
+            value = max(0, min(100, value))
+            self.speed_slider.setValue(value)
+            self.data_manager.set_pump_speed(value)
         except ValueError:
-            pass
+            pass  # ignore invalid input
 
-    def get_state(self) -> tuple[int, int]:
-        return int(self.pump_on_checkbox.isChecked()), self.speed_slider.value()
+    
 class ProcessControlWidgets(QWidget):
     def __init__(self, data_manager: SystemDataManager):
         super().__init__()
@@ -531,7 +564,7 @@ class PumpControlWindow(QWidget):
         self.setMinimumSize(1200, 900)
         self.setStyleSheet("color: white; background-color: #212121;")
 
-        self.pump_control = PumpControlWidget()
+        self.pump_control = PumpControlWidget(self.data_manager)
         self.plot_canvas = PyqtgraphPlotWidget(self.data_manager)
         self.sensor_display = SensorDisplayWidget(self.data_manager)
         self.pid_control = PIDControlWidget(self.data_manager)
@@ -574,7 +607,6 @@ class PumpControlWindow(QWidget):
         main_layout.addWidget(self.permanentRightHandControl)
 
         self.timer = QTimer(self)
-        self.timer.timeout.connect(self._update_gui_and_can_commands)
         self.timer.start(100)
 
         self.data_manager.start_log.connect(self._update_logging_button_state)
@@ -644,12 +676,12 @@ class PumpControlWindow(QWidget):
             self.log_button.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet()) # Revert to default green
 
 
-    def _update_gui_and_can_commands(self):
-        self.plot_canvas.update_plot()
+    # def _update_gui_and_can_commands(self):
+    #     self.plot_canvas.update_plot()
 
-        pump_on, manual_speed = self.pump_control.get_state()
-        pid_output_from_data_manager = self.data_manager._commanded_pid_output
-        self.data_manager.update_commanded_pump_state(pump_on, manual_speed, pid_output_from_data_manager)
+    #     pump_on, manual_speed = self.pump_control.get_state()
+    #     pid_output_from_data_manager = self.data_manager._commanded_pid_output
+    #     self.data_manager.update_commanded_pump_state(pump_on, manual_speed, pid_output_from_data_manager)
 
         
 
@@ -702,9 +734,4 @@ async def main_async():
         app.processEvents()
 
 if __name__ == "__main__":
-    # os.environ["QT_OPENGL"] = "software"
-    # print(f"QT_OPENGL set to: {os.environ.get('QT_OPENGL')}")
-
-    # QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling)
-    # QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     asyncio.run(main_async())

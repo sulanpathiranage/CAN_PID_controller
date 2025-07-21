@@ -1,18 +1,22 @@
 import asyncio
 from typing import List, Dict, Any, Union, Tuple, Callable
 
-from PySide6.QtWidgets import (
+from PyQt6.QtWidgets import (
     QWidget, QPushButton, QGraphicsScene, QGraphicsView,
     QGraphicsProxyWidget, QGraphicsTextItem, QVBoxLayout,
     QLabel, QDoubleSpinBox, QCheckBox, QSpacerItem, QSizePolicy,
     QHBoxLayout
 )
-from PySide6.QtCore import (
-    Qt, QLineF, QPointF, QRectF, QTimer, Signal
+
+from PyQt6.QtCore import (
+    Qt, QLineF, QPointF, QRectF, QTimer, pyqtSignal as Signal
 )
-from PySide6.QtGui import (
+
+from PyQt6.QtGui import (
     QFont, QColor, QPen, QPainter, QPolygonF
 )
+
+
 
 from app_stylesheets import Stylesheets
 from SchematicHelper import (
@@ -23,6 +27,17 @@ from SchematicHelper import (
 from functools import partial
 from data_manager import SystemDataManager
 
+# from PySide6.QtWidgets import (
+#     QWidget, QPushButton, QGraphicsScene, QGraphicsView,
+#     QGraphicsProxyWidget, QGraphicsTextItem, QVBoxLayout,
+#     QLabel, QDoubleSpinBox, QCheckBox, QSpacerItem, QSizePolicy,
+#     QHBoxLayout
+# )
+# from PySide6.QtCore import (
+#     Qt, QLineF, QPointF, QRectF, QTimer, Signal
+# )
+# from PySide6.QtGui import (
+#     QFont, QColor, QPen, QPainter, QPolygonF)
 
 class NH3PumpControlScene(QWidget):
     """
@@ -63,8 +78,8 @@ class NH3PumpControlScene(QWidget):
         self.sensors: dict[str, SensorPlot] = {} # Maps sensor names to their live plot widgets
 
         sensor_defs = [
-            ("PT10120", "pressure", (160, -190), "psi", True),
-            ("PT10130",  "pressure", (610, -190), "psi", True),
+            ("PT10120", "pressure", (175, -190), "psi", True),
+            # ("PT10130",  "pressure", (610, -190), "psi", True),
             ("PT10118", "pressure", (-50, 350), "psi", True),
             ("PT10110", "pressure", (-525, -75), "psi", True),
             ("PT10134", "pressure", (400, -480), "psi", True),  # Added PT10134
@@ -72,14 +87,15 @@ class NH3PumpControlScene(QWidget):
             ("TI10115", "temperature", (-480, 130), "°C", True),
             ("TI10116", "temperature", (-480, 300), "°C", True),
             ("TI10117", "temperature", (-150, 350), "°C", True),
-            ("TI01", "temperature", (350, 260), "°C", True),
-            ("TI10121", "temperature", (310, -190), "°C", True),
+            ("TI01", "temperature", (400, 260), "°C", True),
+            ("TI10121", "temperature", (290, -190), "°C", True),
             ("TI10119", "temperature", (720, -190), "°C", True),
-            ("TI10122", "temperature", (530, -190), "°C", True),  # Added TI10122
-            ("FT10124", "flow_feedback", (810, -190), "kg/h", True),
-            ("FT10106", "flow_feedback", (-500, -325), "kg/h", True),
+            ("TI10122", "temperature", (520, -190), "°C", True),  # Added TI10122
+            ("FT10124", "flow_feedback", (710, 160), "kg/h", True),
+            ("FT10106", "flow_feedback", (-550, -325), "kg/h", True),
             ("PIC10126", "flow_feedback", (600, -480), "psig", True),
-
+            ("PI10130", "pressure", (810, -190), "psi", True),
+            ("PT10101", "pressure", (-700, -325), "psi", True),
             ("PumpFeedback", "pump_feedback", (-40, 60), "%", True),
         ]
 
@@ -156,8 +172,8 @@ class NH3PumpControlScene(QWidget):
         # )
 
         # ESV 10107 Valve
-        self.esv10107Label = CreatePlotLabel(self.systemControlScene, -350, -250)
-        self.esv10107Label.setLabelText("CLOSED") # Initial state text
+        self.esv10107Label = CreatePlotLabel(self.systemControlScene, -375, -335)
+        self.esv10107Label.setLabelText("CLOSED") # Initial state text-
 
         # Create a QPushButton for interaction
         self.esv10107PushButton = QPushButton("ESV-10107: CLOSED") # Initial text for the button
@@ -167,7 +183,7 @@ class NH3PumpControlScene(QWidget):
 
         # Add the QPushButton to the scene via a proxy widget
         esv10107_button_proxy = self.systemControlScene.addWidget(self.esv10107PushButton)
-        esv10107_button_proxy.setPos(-350, -210) # Position where you want the interactive button
+        esv10107_button_proxy.setPos(-375, -300) # Position where you want the interactive button
 
         # Connect the QPushButton's toggled signal to the _toggle_digital_output
         self.esv10107PushButton.toggled.connect(
@@ -182,7 +198,7 @@ class NH3PumpControlScene(QWidget):
         self.data_manager.esv1_state_toggled.connect(self.esv10107PushButton.setChecked)
         # Also connect to a slot that updates the CreatePlotLabel's text/color
         self.data_manager.esv1_state_toggled.connect(
-            partial(self._update_plot_label_from_state, self.esv10107Label, "ESV-10107")
+            lambda state: self._update_plot_label_from_state(self.esv10107Label, state)
         )
 
 
@@ -198,7 +214,7 @@ class NH3PumpControlScene(QWidget):
 
         # Add the QPushButton to the scene via a proxy widget
         esv10112_button_proxy = self.systemControlScene.addWidget(self.esv10112PushButton)
-        esv10112_button_proxy.setPos(-425, -50) # Position where you want the interactive button
+        esv10112_button_proxy.setPos(-425, -45) # Position where you want the interactive button
 
         # Connect the QPushButton's toggled signal to the _toggle_digital_output
         self.esv10112PushButton.toggled.connect(
@@ -213,7 +229,7 @@ class NH3PumpControlScene(QWidget):
         self.data_manager.esv2_state_toggled.connect(self.esv10112PushButton.setChecked)
         # Also connect to a slot that updates the CreatePlotLabel's text/color
         self.data_manager.esv2_state_toggled.connect(
-            partial(self._update_plot_label_from_state, self.esv10112Label, "ESV-10112")
+            lambda state: self._update_plot_label_from_state(self.esv10112Label, state)
         )
 
 
@@ -272,22 +288,20 @@ class NH3PumpControlScene(QWidget):
         # self.data_manager.pid_setpoint_changed.connect(self.pumpSetPointInput.setValue)
 
         # Add Coordinate grid
-        SchematicHelperFunctions.AddCoordinateGrid(self.systemControlScene)
+        # SchematicHelperFunctions.AddCoordinateGrid(self.systemControlScene)
 
         # Draw system components: Labels, valves, boxes, and connection lines
         SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 50, 155, 25, "HV123\nL119-PID-101", -905, 125)
         SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 50, 155, 25, "HV115\nL119-PID-101", -550, -475)
         SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 26, 125, 13, "CHEM VENT", 905, -250)
-        SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 26, 125, 13, "CHEM VENT", 900, 40)
-        SchematicHelperFunctions.CreateInputOutputLabel(self.systemControlScene, 26, 125, 13, "CHEM VENT", 900, 310)
 
         # SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "ESV\n10401", -700, -250)
-        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "PRV\n01", 150, 100)
-        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "P1\n01", 50, -150)
+        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "PSV\n01", 150, 100)
+        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "PG\n01", 50, -150)
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "PSV\n10402", 600, 100)
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "FV\n10129", -75, -600)
-        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "FV\n10106", -500, -250)
-        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "SV\n10107", -400, -250)
+        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "FV\n10106", -475, -250)
+        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "SV\n10107", -375, -250)
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "SV\n10112", -425, 0)
 
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10117", -150, 300)
@@ -296,19 +310,23 @@ class NH3PumpControlScene(QWidget):
 
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10120", 200, -100)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10121", 300, -100)
-        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "FIC", "10124", 700, 100)
-        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "FI", "10124", 800, -100)
+        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "FT", "10124", 725, 100)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10134", 400, -400)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PIC", "10126", 600, -400)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "01", 400, 200)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10122", 550, -100)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10123", 600, -100)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "FIC", "10106", -550, -250)
-        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10110", -500, 0)
+
+        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PT", "10101", -700, -250)
+
+        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PT", "10110", -500, 0)
 
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10111", -600, 0)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10115", -550, 150)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10116", -550, 300)
+
+        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10130", 820, -100)
 
         SchematicHelperFunctions.CreateLabeledBox(self.systemControlScene, 200, 200, "PUMP SPEED", -100, -50)
         SchematicHelperFunctions.CreateLabeledBox(self.systemControlScene, 180, 180, "HEATER", 360, -50)
@@ -318,30 +336,34 @@ class NH3PumpControlScene(QWidget):
 
         # SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=750, yPos=30, size=20, label="Valve")
         # SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=-675, yPos=-150, size=20, label="ESV 10401")
-        SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=-475, yPos=-150, size=20, label="FV 10106")
-        SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=-375, yPos=-150, size=20, label="SV 10107")
-        SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=-50, yPos=-500, size=20, label="FV 10129")
+        SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=-470, yPos=-150, size=20, label="FV 10106")
+        SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=-370, yPos=-150, size=20, label="SV 10107")
+        SchematicHelperFunctions.CreateDoubleTriangleValve(self.systemControlScene, xPos=-70, yPos=-500, size=20, label="FV 10129")
 
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -600, -260, 910, -260, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -600, -260, -600, -150, thickness=2)
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -375, -200, -375, -150, thickness=2)
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -475, -200, -475, -150, thickness=2)
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -350, -200, -350, -150, thickness=2)
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -450, -200, -450, -150, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -525, -200, -525, -150, thickness=2)
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -675, -200, -675, -150, thickness=2)
+
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -670, 241, -670, 275, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 900, 30, 900, -260, thickness=2)
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 100, 30, 910, 30, thickness=2)
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 900, 30, 900, 300, thickness=2)
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 100, 30, 360, 30, thickness=2)
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 540, 30, 900, 30, thickness=2)
+
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 225, -50, 225, 30, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 325, -50, 325, 30, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 100, 125, 150, 125, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 75, -100, 75, -50, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 575, -50, 575, 30, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 625, -50, 625, 30, thickness=2)
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 825, -50, 825, 30, thickness=2)
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 750, -30, 750, 100, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 750, -50, 750, 30, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 675, 30, 675, 300, thickness=2)
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 675, 300, 910, 300, thickness=2)
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 675, 300, 900, 300, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 675, 125, 650, 125, thickness=2)
-        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 700, 30, 700, 100, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 425, 130, 425, 200, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 425, -350, 425, -260, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 625, -350, 625, -260, thickness=2)
@@ -364,6 +386,7 @@ class NH3PumpControlScene(QWidget):
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -25, 300, -25, 250, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -50, -550, -50, -500, thickness=2)
         SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, -400, 50, -400, 100, thickness=2)
+        SchematicHelperFunctions.DrawConnectionLine(self.systemControlScene, 845, 30, 845, -50, thickness=2)
 
         # Adjust zoom
         self.systemControlView.scale(0.9, 0.9)
@@ -408,8 +431,8 @@ class NH3PumpControlScene(QWidget):
         self._update_button_caption(button, base_name, checked_state)
 
         # If a CreatePlotLabel is provided, update its text and color as well
-        if plot_label:
-            self._update_plot_label_from_state(plot_label, checked_state)
+        # if plot_label:
+        #     self._update_plot_label_from_state(plot_label, checked_state)
 
         # Call the data manager's set function to command the new state
         datamanager_set_function(checked_state)
