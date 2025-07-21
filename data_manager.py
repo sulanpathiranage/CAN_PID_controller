@@ -51,7 +51,7 @@ class SystemDataManager(QObject):
        "PT10120": 60, 
        "PT10134": 60, 
        "PT10118": 30, 
-       "PT10101": 60 
+       "PT10135": 60 
     }
     tc_designators = ["TI10111","TI10115","TI10116","TI10117", "TI01","TI10121", "TI10119","TI10122"]
 
