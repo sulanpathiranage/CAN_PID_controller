@@ -1,18 +1,22 @@
 import asyncio
 from typing import List, Dict, Any, Union, Tuple, Callable
 
-from PySide6.QtWidgets import (
+from PyQt6.QtWidgets import (
     QWidget, QPushButton, QGraphicsScene, QGraphicsView,
     QGraphicsProxyWidget, QGraphicsTextItem, QVBoxLayout,
     QLabel, QDoubleSpinBox, QCheckBox, QSpacerItem, QSizePolicy,
     QHBoxLayout
 )
-from PySide6.QtCore import (
-    Qt, QLineF, QPointF, QRectF, QTimer, Signal
+
+from PyQt6.QtCore import (
+    Qt, QLineF, QPointF, QRectF, QTimer, pyqtSignal as Signal
 )
-from PySide6.QtGui import (
+
+from PyQt6.QtGui import (
     QFont, QColor, QPen, QPainter, QPolygonF
 )
+
+
 
 from app_stylesheets import Stylesheets
 from SchematicHelper import (
@@ -23,6 +27,17 @@ from SchematicHelper import (
 from functools import partial
 from data_manager import SystemDataManager
 
+# from PySide6.QtWidgets import (
+#     QWidget, QPushButton, QGraphicsScene, QGraphicsView,
+#     QGraphicsProxyWidget, QGraphicsTextItem, QVBoxLayout,
+#     QLabel, QDoubleSpinBox, QCheckBox, QSpacerItem, QSizePolicy,
+#     QHBoxLayout
+# )
+# from PySide6.QtCore import (
+#     Qt, QLineF, QPointF, QRectF, QTimer, Signal
+# )
+# from PySide6.QtGui import (
+#     QFont, QColor, QPen, QPainter, QPolygonF)
 
 class NH3PumpControlScene(QWidget):
     """

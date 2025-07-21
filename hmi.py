@@ -1,15 +1,10 @@
 import os
 
-os.environ["PYQTGRAPH_QT_LIB"] = "PySide6"
+# os.environ["PYQTGRAPH_QT_LIB"] = "PySide6"
 
-# Disable PySide6 signature features before any imports
-os.environ['PYSIDE_DISABLE_SIGNATURE'] = '1'
-os.environ['PYSIDE_DISABLE_SIGNATURE_LOADING'] = '1'
 
 import sys
-# Set UTF-8 encoding
-if sys.platform == "win32":
-    os.environ['PYTHONIOENCODING'] = 'utf-8'
+
 
 import locale
 import asyncio
@@ -23,14 +18,26 @@ from pyqtgraph.graphicsItems.LegendItem import LegendItem
 
 
 # PySide6 Imports
-from PySide6.QtWidgets import (
+# from PySide6.QtWidgets import (
+#     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+#     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
+#     QGridLayout, QSizePolicy, QMessageBox,
+#     QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget
+# )
+# from PySide6.QtCore import Qt, QTimer, QObject, Signal as pyqtSignal
+# from PySide6.QtGui import QFont, QPen, QBrush, QColor
+
+
+# PyQt6 Imports (aliased to match PySide6 names)
+from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QCheckBox, QLabel, QSlider, QLineEdit, QGroupBox,
     QGridLayout, QSizePolicy, QMessageBox,
     QPushButton, QDoubleSpinBox, QScrollArea, QTabWidget
 )
-from PySide6.QtCore import Qt, QTimer, QObject, Signal as pyqtSignal
-from PySide6.QtGui import QFont, QPen, QBrush, QColor
+from PyQt6.QtCore import Qt, QTimer, QObject, pyqtSignal as Signal
+from PyQt6.QtGui import QFont, QPen, QBrush, QColor
+
 
 # Local imports
 from pid_controller import PIDController
@@ -60,13 +67,13 @@ class CustomLiveAxisRange(LiveAxisRange):
             x_max = num_points * self.tick_duration
             x_min = x_max - window_seconds
 
-        self.set_range(x_min, x_max)
+        self.set_range(x_min, x_max) # type: ignore
 
 class PyqtgraphPlotWidget(QWidget):
     def __init__(self, data_manager: SystemDataManager):
         super().__init__()
         self.data_manager = data_manager
-        self.layout = QHBoxLayout(self)
+        self.layout = QHBoxLayout(self) # type: ignore
         plot_layout = QVBoxLayout()
         self.history_len = self.data_manager.history_len
 
@@ -77,7 +84,7 @@ class PyqtgraphPlotWidget(QWidget):
 
         for designator in self.data_manager.pressure_sensor_names:
             widget, connector, line = self._create_single_sensor_plot(
-                plot_layout, designator, Qt.green, 0, 65)
+                plot_layout, designator, Qt.GlobalColor.green, 0, 65)
             self.pressure_plot_elements[designator] = (widget, connector, line)
 
         self.temp_widget = LivePlotWidget(
@@ -94,7 +101,17 @@ class PyqtgraphPlotWidget(QWidget):
         plot_layout.addWidget(self.temp_legend_widget) 
 
 
-        temp_colors = [Qt.red, Qt.blue, Qt.darkYellow, Qt.magenta, Qt.cyan, Qt.gray, Qt.darkGreen, Qt.darkCyan]
+        # temp_colors = [Qt.red, Qt.blue, Qt.darkYellow, Qt.magenta, Qt.cyan, Qt.gray, Qt.darkGreen, Qt.darkCyan]
+        temp_colors = [
+            QColor(Qt.GlobalColor.red),
+            QColor(Qt.GlobalColor.blue),
+            QColor(Qt.GlobalColor.darkYellow),
+            QColor(Qt.GlobalColor.magenta),
+            QColor(Qt.GlobalColor.cyan),
+            QColor(Qt.GlobalColor.gray),
+            QColor(Qt.GlobalColor.darkGreen),
+            QColor(Qt.GlobalColor.darkCyan),
+        ]
         # temp_symbols = ['s', 't', 'd', 'p', 'h', '+', 'x'] # Different symbols for clarity
 
         for i, designator in enumerate(self.data_manager.temperature_sensor_names):
@@ -123,7 +140,7 @@ class PyqtgraphPlotWidget(QWidget):
 
         if self.data_manager.deditec_feedback:
             flow_name = self.data_manager.deditec_feedback[0]
-            widget, connector, line = self._create_single_sensor_plot(plot_layout, flow_name, Qt.cyan, 0, 101)
+            widget, connector, line = self._create_single_sensor_plot(plot_layout, flow_name, Qt.GlobalColor.cyan, 0, 101)
             self.flow_plot_elements[flow_name] = (widget, connector, line)
             
 
@@ -205,7 +222,7 @@ class PermanentRightHandDisplay(QWidget):
         self._interlock_labels: list[QLabel] = []
         for idx in range(1, 5):
             lbl = QLabel(f"Interlock {idx}: OK")
-            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet(Stylesheets.LabelStyleGreen())   # green “OK”
             layout.addWidget(lbl)
             self._interlock_labels.append(lbl)
@@ -717,9 +734,4 @@ async def main_async():
         app.processEvents()
 
 if __name__ == "__main__":
-    # os.environ["QT_OPENGL"] = "software"
-    # print(f"QT_OPENGL set to: {os.environ.get('QT_OPENGL')}")
-
-    # QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling)
-    # QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     asyncio.run(main_async())
