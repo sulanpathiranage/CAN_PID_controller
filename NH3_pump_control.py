@@ -80,7 +80,7 @@ class NH3PumpControlScene(QWidget):
             ("FT10106", "flow_feedback", (-550, -325), "kg/h", True),
             ("PIC10126", "flow_feedback", (600, -480), "psig", True),
             ("PI10130", "pressure", (810, -190), "psi", True),
-            ("INLET", "pressure", (-700, -325), "psi", True),
+            ("PT10101", "pressure", (-700, -325), "psi", True),
             ("PumpFeedback", "pump_feedback", (-40, 60), "%", True),
         ]
 
@@ -303,7 +303,7 @@ class NH3PumpControlScene(QWidget):
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10123", 600, -100)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "FIC", "10106", -550, -250)
 
-        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "INLET", -700, -250)
+        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PT", "10101", -700, -250)
 
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PT", "10110", -500, 0)
 
