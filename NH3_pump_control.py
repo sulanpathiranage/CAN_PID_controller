@@ -79,7 +79,7 @@ class NH3PumpControlScene(QWidget):
 
         sensor_defs = [
             ("PT10120", "pressure", (175, -190), "psi", True),
-            ("PT10123",  "pressure", (620, -190), "psi", True),
+            ("PT10123",  "pressure", (610, -190), "psi", True),
             ("PT10118", "pressure", (-50, 350), "psi", True),
             ("PT10110", "pressure", (-525, -75), "psi", True),
             ("PT10134", "pressure", (400, -480), "psi", True),  # Added PT10134
@@ -113,21 +113,21 @@ class NH3PumpControlScene(QWidget):
 
 
 
-        if kind == "pressure":
-            idx = self.data_manager.pressure_sensor_names.index(name)
-            self.data_manager.pressure_updated.connect(
-                lambda vals, i=idx, s_plot=current_sensor_plot: s_plot.update_value(vals[i])
-            )
-        elif kind == "temperature":
-            idx = self.data_manager.temperature_sensor_names.index(name)
-            self.data_manager.temperature_updated.connect(
-                lambda vals, i=idx, s_plot=current_sensor_plot: s_plot.update_value(vals[i])
-            )
-        elif kind == "current_feedback":
-            idx = self.data_manager.current_sensor_names.index(name)
-            self.data_manager.current_feedback_updated.connect(
-                lambda vals, i = idx, s_plot=current_sensor_plot: s_plot.update_value(vals[i])
-            )
+            if kind == "pressure":
+                idx = self.data_manager.pressure_sensor_names.index(name)
+                self.data_manager.pressure_updated.connect(
+                    lambda vals, i=idx, s_plot=current_sensor_plot: s_plot.update_value(vals[i])
+                )
+            elif kind == "temperature":
+                idx = self.data_manager.temperature_sensor_names.index(name)
+                self.data_manager.temperature_updated.connect(
+                    lambda vals, i=idx, s_plot=current_sensor_plot: s_plot.update_value(vals[i])
+                )
+            elif kind == "current_feedback":
+                idx = self.data_manager.current_sensor_names.index(name)
+                self.data_manager.current_feedback_updated.connect(
+                    lambda vals, i = idx, s_plot=current_sensor_plot: s_plot.update_value(vals[i])
+                )
         # Zoom and Grid Controls
         self.zoomInButton = QPushButton("Zoom In")
         self.zoomOutButton = QPushButton("Zoom Out")
