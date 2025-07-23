@@ -296,9 +296,9 @@ class CanOpen:
         if  process_scale == process_max:
             output = 0xFFFF
         elif process_scale <= 0:
-            output = 0
+            output = 13109
         else: 
-            output = (process_scale/process_max)*65535
+            output = ((process_scale/process_max)*52426) + 13109
 
         return int(output)
 
