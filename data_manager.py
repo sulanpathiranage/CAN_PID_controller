@@ -410,12 +410,15 @@ class SystemDataManager(QObject):
         self.pic_setpoint_updated.emit(self.pic_setpoint)
     
     @staticmethod    
-    def mA_to_scale(current_mA, scale):
-        if current_mA < 4:
-            return 0.0
-        elif current_mA > 20:
-            current_mA = 20
-        return ((current_mA - 4) / 16.0) * scale
+    def mA_to_scale(current_mA, scale, offset):
+        four_point = 4 + offset
+        twenty_point = 20+ offset
+        if current_mA < four_point :
+            current_mA = four_point
+        elif current_mA > twenty_point:
+            current_mA = twenty_point
+
+        return ((current_mA - four_point) / 16.0) * scale
 
     def get_sensor_deque(self, designator: str) -> Union[deque, None]:
         """
@@ -477,11 +480,13 @@ class SystemDataManager(QObject):
         self.temperature_updated.emit(self._last_temps)
 
     def update_current_data(self, mA: list[float]):
-        # if len(mA) < len(self.deditec_info):
-        #     return                                       # silent drop
+        if len(mA) < len(self.deditec_info):
+            print("ERROR: Unexpected length, too short")
+            return                                      
 
         for i, (name, full_scale) in enumerate(self.deditec_info.items()):
-            val = SystemDataManager.mA_to_scale(mA[i], full_scale)
+            offset_lut = [0, -0.40, -0.42, 0, -0.25] #using an offset LUT since signals are not 4mA at 0 - [pump, ft10124, ft10106, placeholder, pic10126]
+            val = SystemDataManager.mA_to_scale(mA[i], full_scale, offset_lut[i])
             self._last_deditec[i] = val
             self._deditec_data[i].append(val)
 
