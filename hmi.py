@@ -384,13 +384,13 @@ class ProcessControlWidgets(QWidget):
 
         self.mfm1_slider = QDoubleSpinBox()
         self.mfm1_slider.setRange(0.0, 40)
-        self.mfm1_slider.editingFinished.connect(lambda v: self.data_manager.set_mfm1(float(v)))
+        self.mfm1_slider.editingFinished.connect(lambda: self.data_manager.set_mfm1(self.mfm1_slider.value()))
         layout.addWidget(QLabel("FIC 10106 Setpoint (max 32.8 kg/h):"), 0, 0)
         layout.addWidget(self.mfm1_slider, 0, 1)
 
         self.mfm2_slider = QDoubleSpinBox()
         self.mfm2_slider.setRange(0.0, 40)
-        self.mfm2_slider.editingFinished.connect(lambda v: self.data_manager.set_mfm2(float(v)))
+        self.mfm2_slider.editingFinished.connect(lambda: self.data_manager.set_mfm2(self.mfm2_slider.value()))
         layout.addWidget(QLabel("FIC 10124 Setpoint (max 32.8 kg/h):"), 1, 0)
         layout.addWidget(self.mfm2_slider, 1, 1)
 
@@ -398,7 +398,7 @@ class ProcessControlWidgets(QWidget):
         self.pic_slider.setRange(0.0, 300)
         self.pic_slider.setDecimals(2)
         self.pic_slider.setSingleStep(0.1)
-        self.pic_slider.editingFinished.connect(lambda v: self.data_manager.set_pic(float(v)))
+        self.pic_slider.editingFinished.connect(lambda: self.data_manager.set_pic(self.pic_slider.value()))
         layout.addWidget(QLabel("PIC Setpoint ('%' of psig range):"), 2, 0)
         layout.addWidget(self.pic_slider, 2, 1)
 
