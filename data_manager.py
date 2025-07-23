@@ -16,6 +16,8 @@ class SystemDataManager(QObject):
     pressure_updated = pyqtSignal(list)
     temperature_updated = pyqtSignal(list)
     pump_feedback_updated = pyqtSignal(float, float, float, float)
+    current_feedback_updated = pyqtSignal(list)
+
     e_stop_toggled = pyqtSignal(bool)
     esv1_state_toggled = pyqtSignal(bool)
     esv2_state_toggled = pyqtSignal(bool)
@@ -59,6 +61,7 @@ class SystemDataManager(QObject):
         "PumpFeedback": 100,    # percent
         "FT10124":      32.8,   # kg/h
         "FT10106":      32.8,    #kg/h
+        "Blank":        100,
         "PIC10126":     250     #psig
     }
 
@@ -385,7 +388,7 @@ class SystemDataManager(QObject):
         return self.tc_designators
 
     @property
-    def flow_sensor_names(self) -> List[str]:
+    def current_sensor_names(self) -> List[str]:
         return self.deditec_feedback
 
     def _bar_to_psi(self, barg: float) -> float:
@@ -488,6 +491,8 @@ class SystemDataManager(QObject):
             self._last_deditec[self.deditec_feedback.index("FT10106")],
             self._last_deditec[self.deditec_feedback.index("PIC10126")]
         )
+        self.current_feedback_updated.emit(self._last_deditec)
+
 
         self.interlock_trigger()
 

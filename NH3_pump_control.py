@@ -91,12 +91,12 @@ class NH3PumpControlScene(QWidget):
             ("TI10121", "temperature", (290, -190), "°C", True),
             ("TI10119", "temperature", (720, -190), "°C", True),
             ("TI10122", "temperature", (520, -190), "°C", True),  # Added TI10122
-            ("FT10124", "flow_feedback", (710, 160), "kg/h", True),
-            ("FT10106", "flow_feedback", (-550, -325), "kg/h", True),
-            ("PIC10126", "flow_feedback", (600, -480), "psig", True),
+            ("FT10124", "current_feedback", (710, 160), "kg/h", True),
+            ("FT10106", "current_feedback", (-550, -325), "kg/h", True),
+            ("PIC10126", "current_feedback", (600, -480), "psig", True),
             ("PI10130", "pressure", (810, -190), "psi", True),
             ("PT10135", "pressure", (-700, -325), "psi", True),
-            ("PumpFeedback", "pump_feedback", (-40, 60), "%", True),
+            ("PumpFeedback", "current_feedback", (-40, 60), "%", True),
         ]
 
         for name, kind, pos, units, live in sensor_defs:
@@ -112,29 +112,22 @@ class NH3PumpControlScene(QWidget):
             self.sensors[name] = current_sensor_plot
 
 
-            if kind == "pressure":
-                idx = self.data_manager.pressure_sensor_names.index(name)
-                self.data_manager.pressure_updated.connect(
-                    lambda vals, i=idx, s_plot=current_sensor_plot: s_plot.update_value(vals[i])
-                )
-            elif kind == "temperature":
-                idx = self.data_manager.temperature_sensor_names.index(name)
-                self.data_manager.temperature_updated.connect(
-                    lambda vals, i=idx, s_plot=current_sensor_plot: s_plot.update_value(vals[i])
-                )
-            elif kind == "flow_feedback":
-                # Use partial to pre-apply current_sensor_plot as the last argument
-                # The lambda will then receive the 4 signal values first
-                self.data_manager.pump_feedback_updated.connect(
-                    # ft1024_val and pic_val are the 3rd and 4th floats
-                    # This lambda needs to match the 4 floats emitted by the signal
-                    lambda pump_val, flow_val, ft1024_val, pic_val, s_plot=current_sensor_plot: s_plot.update_value(flow_val)
-                )
-            elif kind == "pump_feedback":
-                # Similarly for pump_feedback
-                self.data_manager.pump_feedback_updated.connect(
-                    lambda pump_val, flow_val, ft1024_val, pic_val, s_plot=current_sensor_plot: s_plot.update_value(pump_val)
-                )
+
+        if kind == "pressure":
+            idx = self.data_manager.pressure_sensor_names.index(name)
+            self.data_manager.pressure_updated.connect(
+                lambda vals, i=idx, s_plot=current_sensor_plot: s_plot.update_value(vals[i])
+            )
+        elif kind == "temperature":
+            idx = self.data_manager.temperature_sensor_names.index(name)
+            self.data_manager.temperature_updated.connect(
+                lambda vals, i=idx, s_plot=current_sensor_plot: s_plot.update_value(vals[i])
+            )
+        elif kind == "current_feedback":
+            idx = self.data_manager.current_sensor_names.index(name)
+            self.data_manager.current_feedback_updated.connect(
+                lambda vals, i = idx, s_plot=current_sensor_plot: s_plot.update_value(vals[i])
+            )
         # Zoom and Grid Controls
         self.zoomInButton = QPushButton("Zoom In")
         self.zoomOutButton = QPushButton("Zoom Out")

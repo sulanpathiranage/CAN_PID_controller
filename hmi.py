@@ -185,8 +185,8 @@ class PyqtgraphPlotWidget(QWidget):
 
     def _on_pump_feedback_updated(self, pump_percent: float, flow1_kg_per_h: float,flow2_kg_per_h: float ):
         """Updates the flow rate plot with new data."""
-        if self.data_manager.flow_sensor_names:
-            flow_designator = self.data_manager.flow_sensor_names[0]
+        if self.data_manager.current_sensor_names:
+            flow_designator = self.data_manager.current_sensor_names[0]
             if flow_designator in self.flow_plot_elements:
                 _, connector, _ = self.flow_plot_elements[flow_designator]
                 connector.cb_append_data_point(pump_percent)
@@ -383,19 +383,19 @@ class ProcessControlWidgets(QWidget):
         group.setLayout(layout)  # Set the grid layout to the group box
 
         self.mfm1_slider = QDoubleSpinBox()
-        self.mfm1_slider.setRange(0.0, 100.0)
+        self.mfm1_slider.setRange(0.0, 40)
         self.mfm1_slider.valueChanged.connect(lambda v: self.data_manager.set_mfm1(float(v)))
         layout.addWidget(QLabel("FIC 10106 Setpoint (max 32.8 kg/h):"), 0, 0)
         layout.addWidget(self.mfm1_slider, 0, 1)
 
         self.mfm2_slider = QDoubleSpinBox()
-        self.mfm2_slider.setRange(0.0, 100.0)
+        self.mfm2_slider.setRange(0.0, 40)
         self.mfm2_slider.valueChanged.connect(lambda v: self.data_manager.set_mfm2(float(v)))
         layout.addWidget(QLabel("FIC 10124 Setpoint (max 32.8 kg/h):"), 1, 0)
         layout.addWidget(self.mfm2_slider, 1, 1)
 
         self.pic_slider = QDoubleSpinBox()
-        self.pic_slider.setRange(0.0, 100.0)
+        self.pic_slider.setRange(0.0, 300)
         self.pic_slider.setDecimals(2)
         self.pic_slider.setSingleStep(0.1)
         self.pic_slider.valueChanged.connect(lambda v: self.data_manager.set_pic(float(v)))

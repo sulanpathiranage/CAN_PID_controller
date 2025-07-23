@@ -581,7 +581,7 @@ class CreatePlotLabel():
         super().__init__()
         self.label = QLabel("---")
         self.label.setStyleSheet(Stylesheets.PlotLabelStyle()) 
-        self.label.setFixedSize(80, 30)
+        self.label.setFixedSize(90, 30)
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.labelProxy = RoundedProxy()
         self.labelProxy.setWidget(self.label)
