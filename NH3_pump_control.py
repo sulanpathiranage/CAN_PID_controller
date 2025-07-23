@@ -79,7 +79,7 @@ class NH3PumpControlScene(QWidget):
 
         sensor_defs = [
             ("PT10120", "pressure", (175, -190), "psi", True),
-            # ("PT10130",  "pressure", (610, -190), "psi", True),
+            ("PT10123",  "pressure", (620, -190), "psi", True),
             ("PT10118", "pressure", (-50, 350), "psi", True),
             ("PT10110", "pressure", (-525, -75), "psi", True),
             ("PT10134", "pressure", (400, -480), "psi", True),  # Added PT10134

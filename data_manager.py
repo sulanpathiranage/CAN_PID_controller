@@ -491,6 +491,8 @@ class SystemDataManager(QObject):
             self._last_deditec[self.deditec_feedback.index("FT10106")],
             self._last_deditec[self.deditec_feedback.index("PIC10126")]
         )
+        self._last_deditec = [1, 32.8, 32.8, 100, 4]
+        print(self._last_deditec)
         self.current_feedback_updated.emit(self._last_deditec)
 
 
