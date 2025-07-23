@@ -418,7 +418,7 @@ class SensorDisplayWidget(QWidget):
         self.data_manager = data_manager
         layout = QVBoxLayout(self)
 
-        self._pump_name, self.flow1_name, self.flow2_name, self.pic_name  = data_manager.deditec_feedback
+        self._pump_name, self.flow1_name, self.flow2_name,self.placeholder, self.pic_name  = data_manager.deditec_feedback
 
         self.pump_feedback_label = QLabel(f"{self._pump_name}: -- %")
         self.flow1_feedback_label = QLabel(f"{self.flow1_name}: -- kg/h")
