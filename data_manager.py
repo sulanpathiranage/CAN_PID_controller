@@ -157,10 +157,10 @@ class SystemDataManager(QObject):
         if enable and not self._logging_enabled:
             # Generate a timestamped filename if no base name is set
             if not self._log_filename:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                timestamp = datetime.now().strftime("%Y%m%d")
                 log_file_path = f"log_data_{timestamp}.csv"
             else:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                timestamp = datetime.now().strftime("%Y%m%d")
                 log_file_path = f"{self._log_filename}_{timestamp}.csv"
 
             try:
@@ -747,6 +747,8 @@ class SystemDataManager(QObject):
 
                 if "fourtwenty" in message:                    
                     self.update_current_data(message["fourtwenty"])
+                    print(message["fourtwenty"])
+
             except Exception as e:
                 self.can_error.emit(f"Consumer processing error: {e}")
             finally:
