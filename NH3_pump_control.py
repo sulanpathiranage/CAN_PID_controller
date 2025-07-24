@@ -92,7 +92,7 @@ class NH3PumpControlScene(QWidget):
             ("TI10119", "temperature", (720, -190), "°C", True),
             ("TI10122", "temperature", (520, -190), "°C", True),  # Added TI10122
             ("FT10124", "current_feedback", (710, 160), "kg/h", True),
-            ("FT10106", "current_feedback", (-375, -335), "kg/h", True),  
+            ("FT10106", "current_feedback", (-375, -325), "kg/h", True),  
             ("PIC10126", "current_feedback", (600, -480), "psig", True),
             ("PI10130", "pressure", (810, -190), "psi", True),
             ("PT10135", "pressure", (-700, -325), "psi", True),
@@ -165,7 +165,7 @@ class NH3PumpControlScene(QWidget):
         # )
 
         # ESV 10107 Valve
-        self.esv10107Label = CreatePlotLabel(self.systemControlScene,-550, -325)
+        self.esv10107Label = CreatePlotLabel(self.systemControlScene,-560, -325)
         self.esv10107Label.setLabelText("CLOSED") # Initial state text-
 
         # Create a QPushButton for interaction

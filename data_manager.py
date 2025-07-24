@@ -32,6 +32,7 @@ class SystemDataManager(QObject):
     interlock2_detected = pyqtSignal(bool, list) # channel_index, [lw, ls, hw, hs]
     interlock3_detected = pyqtSignal(bool, list) # channel_index, [lw, ls, hw, hs]
     interlock4_detected = pyqtSignal(bool, list) # channel_index, [lw, ls, hw, hs]
+    interlock5_detected = pyqtSignal(bool, list)
     interlock_checked = pyqtSignal(bool)
     start_log = pyqtSignal(bool)
     log_name  = pyqtSignal(str)
@@ -39,7 +40,7 @@ class SystemDataManager(QObject):
     pid_enabled_status_changed = pyqtSignal(bool) 
     pid_setpoint_updated = pyqtSignal(float)
     pump_enabled = pyqtSignal(bool)
-    pump_speed_updated = pyqtSignal(float)
+    pump_speed_updated = pyqtSignal(int)
 
     #sensor defintions as defined by channel/msg order
     pt_info = {
@@ -90,8 +91,17 @@ class SystemDataManager(QObject):
             "interlock2": None,
             "interlock3": None,
             "interlock4": None,
+            "interlock5": None
         }
         self._interlock_hold_duration = 1.0  # seconds
+        self._interlocks_enabled: dict[str, bool] = {
+            "interlock1": True,
+            "interlock2": True,
+            "interlock3": True,
+            "interlock4": True,
+            "interlock5": True,
+        }
+
 
         self.esv_state = [0, 0]
         self._esv1_cmd = False
@@ -332,6 +342,14 @@ class SystemDataManager(QObject):
         if self.interlock_begin != value:
             self.interlock_begin = value
             self.interlock_checked.emit(value)
+
+    def set_interlock_enabled(self, index: int, enabled: bool):
+        key = f"interlock{index + 1}"
+        if key in self._interlocks_enabled:
+            self._interlocks_enabled[key] = enabled
+
+
+            
         
     def set_pic(self, value: float):
         if self.pic_setpoint != value:
@@ -499,7 +517,6 @@ class SystemDataManager(QObject):
             self._last_deditec[self.deditec_feedback.index("FT10106")],
             self._last_deditec[self.deditec_feedback.index("PIC10126")]
         )
-        print(self._last_deditec)
         self.current_feedback_updated.emit(self._last_deditec)
 
 
@@ -570,7 +587,7 @@ class SystemDataManager(QObject):
         self.set_esv2(False)
         self.set_mfm1(0)
         self.set_mfm2(0)
-        self.set_pic(0)
+        # self.set_pic(0)
         self.set_pump_speed(0)
         self.set_pid_enabled(False)
 
@@ -579,10 +596,6 @@ class SystemDataManager(QObject):
     def toggle_e_stop_state(self):
         """Toggles the E-STOP state."""
         self.eStopValue = not self.eStopValue
-
-    def toggle_interlocks(self):
-        """Toggles the E-STOP state."""
-        self.interlock_begin = not self.interlock_begin
 
 
     def toggle_can_connection(self):
@@ -638,6 +651,10 @@ class SystemDataManager(QObject):
                 self._can_connected = False
                 self.can_connection_status_changed.emit(False)
 
+    def toggle_interlocks(self):
+        """Toggles the interlock state."""
+        self.interlock_begin = not self.interlock_begin
+
     def interlock_trigger(self):
         """
         Evaluates sensor values against limits and debounces faults to prevent
@@ -649,24 +666,25 @@ class SystemDataManager(QObject):
         pt10110_val = self.get_latest_sensor_value("PT10110")
         pt10120_val = self.get_latest_sensor_value("PT10120")
         ti10119_val = self.get_latest_sensor_value("TI10119")
+        ti10117_val = self.get_latest_sensor_value("TI10117")
         try:
             ft_index = self.deditec_feedback.index("FT10124")
             FT10124_val = self._last_deditec[ft_index]
         except ValueError:
             FT10124_val = 0.0
 
-        interlock1 = interlock2 = interlock3 = interlock4 = [False] * 4
+        interlock1 = interlock2 = interlock3 = interlock4 = interlock5 = [False] * 4
 
-        if self.interlock_begin:
+        if self._interlocks_enabled["interlock1"]:
             interlock1 = FaultManager.limit_fault(pt10110_val, self._bar_to_psi(2), no_lo_limit, self._bar_to_psi(7), no_hi_limit)
-            interlock2 = FaultManager.limit_fault(pt10120_val, self._bar_to_psi(15), no_lo_limit, self._bar_to_psi(19), self._bar_to_psi(20))
-
-            if ti10119_val == self.INVALID_TEMP_MARKER:
-                interlock3 = [True] * 4
-            else:
-                interlock3 = FaultManager.limit_fault(ti10119_val, 47, 45, 55, 60)
-
-            interlock4 = FaultManager.limit_fault(FT10124_val, 1.16, 0.93, 31.3, no_hi_limit)
+        if self._interlocks_enabled["interlock2"]:
+            interlock2 = FaultManager.limit_fault(ti10117_val, no_lo_limit, no_lo_limit, 10, no_hi_limit)
+        if self._interlocks_enabled["interlock3"]:
+            interlock3 = FaultManager.limit_fault(pt10120_val, self._bar_to_psi(15), no_lo_limit, self._bar_to_psi(19), self._bar_to_psi(20))
+        if self._interlocks_enabled["interlock4"]:
+            interlock4 = FaultManager.limit_fault(ti10119_val, 47, 45, 55, 60)
+        if self._interlocks_enabled["interlock5"]:
+            interlock5 = FaultManager.limit_fault(FT10124_val, 1.16, 0.93, 31.3, no_hi_limit)
 
         now = time.time()
 
@@ -705,11 +723,17 @@ class SystemDataManager(QObject):
         else:
             self.interlock4_detected.emit(False, interlock4)
 
+        if check_hold("interlock5", interlock5):
+            self.interlock5_detected.emit(True, interlock5)
+        else:
+            self.interlock5_detected.emit(False, interlock5)
+
         self.interlock_flag = (
             check_hold("interlock1", interlock1) and (interlock1[1] or interlock1[3]) or
             check_hold("interlock2", interlock2) and (interlock2[1] or interlock2[3]) or
             check_hold("interlock3", interlock3) and (interlock3[1] or interlock3[3]) or
-            check_hold("interlock4", interlock4) and (interlock4[1] or interlock4[3])
+            check_hold("interlock4", interlock4) and (interlock4[1] or interlock4[3]) or
+            check_hold("interlock5", interlock5) and (interlock5[1] or interlock5[3])
         )
 
         if self.interlock_flag and not self.eStopValue:
@@ -735,10 +759,11 @@ class SystemDataManager(QObject):
 
                 if "fourtwenty" in message:                    
                     self.update_current_data(message["fourtwenty"])
-                    print(message["fourtwenty"])
 
             except Exception as e:
                 self.can_error.emit(f"Consumer processing error: {e}")
+                import traceback
+                print(f"Full traceback: {traceback.format_exc()}")
             finally:
                 self._can_data_queue.task_done()
 
