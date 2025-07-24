@@ -345,7 +345,7 @@ class CanOpen:
         return msg
 
     @staticmethod
-    def start_listener(bus: can.Bus, resolution, data_queue: asyncio.Queue):
+    def start_listener(bus: can.Bus, resolution, data_queue: asyncio.Queue): # type: ignore
         """
         Starts a CAN bus listener that parses incoming messages and puts structured data
         into a single asyncio.Queue.
@@ -371,14 +371,7 @@ class CanOpen:
         micromod_map = [0x180, 0x181]
         tc_mm_map = [0x182,0x183,0x184,0x185]
         deditec_map = [0x1A3, 0x2A3, 0x3A3, 0x4A3]
-        # can_ids = {
-        #     0x181 : "micromod",
-        #     0x182 : "tc_mm",
-        #     0x1FE : "deditec",
-        #     }   
-        # micromod_map = [0x181]
-        # tc_mm_map = [0x182]
-        # deditec_map = [0x1FE]
+
 
         class _AsyncListener(can.Listener):
             """
@@ -391,7 +384,6 @@ class CanOpen:
                 self.delta_time = time.time()
                 self.message_buffer = defaultdict(dict)
                 self.expected_ids = set(can_ids)
-            #pass data into queue asynchronously
             def on_message_received(self, msg: can.Message):
                 rec_id = msg.arbitration_id
                 if rec_id not in can_ids:

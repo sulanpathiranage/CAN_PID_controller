@@ -10,7 +10,7 @@ from collections import defaultdict
 class CANIO:
 
     @staticmethod
-    def parse_micromod(msg, resolution):
+    def parse_5vadc_tpdo(msg: can.Message, resolution):
         data = []
         min_raw = 0
         max_raw = (2**resolution-1)  
@@ -18,6 +18,7 @@ class CANIO:
 
         for i in range(0, 8, 2):  # Each channel is 2 bytes
             raw = int.from_bytes(msg.data[i:i+2], byteorder='little', signed=True)
+            # Clamp if needed
             if raw < min_raw:
                 voltage = 0.0
             elif raw > max_raw:
@@ -27,14 +28,6 @@ class CANIO:
             data.append(voltage)
 
         return data
-    
-    @staticmethod
-    def parse_deditec(msg):
-        currents = []
-        for i in range(0, 8, 2):
-            raw = int.from_bytes(msg.data[i:i+2], "little", signed=False)
-            currents.append((raw / 65535) * 50)
-        return currents   
     
     @staticmethod    
     def parse_temp_tpdo(msg):
@@ -63,6 +56,16 @@ class CANIO:
             current_mA = 20
         return ((current_mA - 4) / 16.0) * full_scale
     
+    @staticmethod
+    def parse_i_tpdo(msg):
+        currents = []
+        for i in range(0, 8, 2):
+            raw = int.from_bytes(msg.data[i:i+2], "little", signed=False)
+            currents.append((raw / 65535) * 50)
+        return currents        
+
+
+    
     @staticmethod     
     def generate_uint_16bit_msg(val1, val2, val3, val4):
         sig_1 = val1.to_bytes(2, byteorder='little', signed=False)
@@ -74,22 +77,6 @@ class CANIO:
         msg = list(msg_bytes)  # Convert to flat list of ints
 
         return msg
-
-    @staticmethod     
-    def generate_pump_msg(pump_on, pump_speed):
-
-        if pump_speed < 0:
-            pump_speed = 0
-        elif pump_speed >100:
-            pump_speed = 100
-        else: 
-            pump_speed = pump_speed
-
-        raw_out1 = pump_speed* 655
-
-        raw_out2 = CANIO.digital_to_16bitanalog(pump_on)
-
-        return raw_out1, raw_out2
     
     @staticmethod
     def digital_to_16bitanalog(digitalval):
@@ -101,6 +88,60 @@ class CANIO:
             raise ValueError("digital value error!")
 
         return output
+    
+    @staticmethod
+    def percent_to_16bitanalog(percent):
+        if  percent == 100:
+            output = 0xFFFF
+        elif percent == 0:
+            output = 0
+        else: 
+            output = (percent/100)*65535
+
+        return output
+    
+    @staticmethod
+    def process_to_16bitanalog(process_scale, process_max):
+        raw_four_value = 13109 #physically verified bit value that outputs 4 mA
+        raw_max_value = 65535 #16bit scale
+        four_twenty_scale = raw_max_value - raw_four_value # 20mA bit value - 4mA bit value
+        if  process_scale == process_max:
+            output = raw_max_value
+        elif process_scale <= 0:
+            output = raw_four_value
+        else: 
+            output = ((process_scale/process_max)*four_twenty_scale) + raw_four_value
+
+        return int(output)
+
+
+    @staticmethod     
+    def generate_outmm_msg1(pump_on, pump_speed, mfm1_state, mfm2_state):
+
+        # if pump_speed < 0:
+        #     pump_speed = 0
+        # elif pump_speed >100:
+        #     pump_speed = 100
+        # else: 
+        #     pump_speed = pump_speed
+
+        # raw_out1 = pump_speed* 655
+        raw_out1 = CANIO.process_to_16bitanalog(pump_speed, 100)
+
+        raw_out2 = CANIO.digital_to_16bitanalog(pump_on)
+
+        raw_out3 = CANIO.process_to_16bitanalog(mfm1_state, 32.8)
+        raw_out4 = CANIO.process_to_16bitanalog(mfm2_state, 32.8)
+
+        return raw_out1, raw_out2, raw_out3, raw_out4
+    
+    @staticmethod     
+    def generate_outmm_msg2(alicat_state):
+
+        raw_out1 = CANIO.process_to_16bitanalog(alicat_state, 250)
+
+        return raw_out1
+    
     
     @staticmethod
     def generic_dout_msg(out1, out2, out3, out4, arbitration_id):
@@ -213,27 +254,43 @@ class CANIO:
         return can.Notifier(bus, [_AsyncListener()], loop=asyncio.get_running_loop())
 
 
-
     @staticmethod
-    async def send_outputs(can_bus, eStopFlag, pump_state, esv_state):
-        out_minimodul_id = 0x600
+    async def send_outputs(can_bus, data_queue: asyncio.Queue):
+        out_minimodul1_id = 0x600
+        out_minimodul2_id = 0x601
         out_minimod_id = 0x191
+        outputs: Dict[str, Any] = await data_queue.get()
+        try:
+            if "estop_flag" in outputs:
+                eStopFlag = outputs["eStopFlag"]
+            if "pump_state" in outputs:
+                pump_state = outputs["pump_state"]
+            if "esv_state" in outputs:
+                esv_state = outputs["esv_state"]
+            if "mfm_state" in outputs:
+                mfm_state = outputs["mfm_state"]
+            if "pic_state" in outputs:
+                pic_state = outputs["pic_state"]
+        except:
+            print("OUTPUT QUEUE HANDLING ERROR")
+        heaterOn = True
         if eStopFlag:
-            msg_outmm = can.Message(arbitration_id=out_minimodul_id, data=[00]*8, is_extended_id=False)
+            msg_outmm = can.Message(arbitration_id=out_minimodul1_id, data=[00]*8, is_extended_id=False)
+            msg_outmm1 = can.Message(arbitration_id=out_minimodul2_id, data=[00]*8, is_extended_id=False)
             msg_minimod = CANIO.generic_dout_msg(0, 0, 0 ,0, out_minimod_id)
 
         else:
             speed = max(0.0, min(100.0, pump_state[1] if pump_state[1] is not None else 0.0))
-            raw1, raw2 = CANIO.generate_pump_msg(pump_state[0], speed)
-            data_minimodul = CANIO.generate_uint_16bit_msg(int(raw1), int(raw2), 0, 0)
-            msg_outmm = can.Message(arbitration_id=out_minimodul_id, data=data_minimodul, is_extended_id=False)
-            msg_minimod = CANIO.generic_dout_msg(esv_state[0], esv_state[1], 0 ,0, out_minimod_id)
+            raw1, raw2, raw3, raw4 = CANIO.generate_outmm_msg1(pump_state[0], speed, mfm_state[0], mfm_state[1])
+            raw5 = CANIO.generate_outmm_msg2(pic_state)
+            data_minimodul2 = CANIO.generate_uint_16bit_msg(int(raw5),0,0,0)
+            data_minimodul = CANIO.generate_uint_16bit_msg(int(raw1), int(raw2), int(raw3), int(raw4))
+            msg_outmm = can.Message(arbitration_id=out_minimodul1_id, data=data_minimodul, is_extended_id=False)
+            msg_outmm1 = can.Message(arbitration_id=out_minimodul2_id, data=data_minimodul2, is_extended_id=False)
+            msg_minimod = CANIO.generic_dout_msg(heaterOn, esv_state[0], esv_state[1] ,0, out_minimod_id)
         try:
             can_bus.send(msg_outmm)
+            can_bus.send(msg_outmm1)
             can_bus.send(msg_minimod)
         except Exception as e:
                 print(f"CAN Send Error: {e}")
-
-       
-
-
