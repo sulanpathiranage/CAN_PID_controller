@@ -165,7 +165,7 @@ class NH3PumpControlScene(QWidget):
         # )
 
         # ESV 10107 Valve
-        self.esv10107Label = CreatePlotLabel(self.systemControlScene,-560, -325)
+        self.esv10107Label = CreatePlotLabel(self.systemControlScene,-560, -335)
         self.esv10107Label.setLabelText("CLOSED") # Initial state text-
 
         # Create a QPushButton for interaction

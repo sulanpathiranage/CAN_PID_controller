@@ -172,6 +172,19 @@ class Stylesheets:
         }
         """
         return plotLabelStyle
+    
+    @staticmethod
+    def LabelStyleGreenMini():
+        plotLabelStyle = """
+        QLabel {
+            background-color: #2E7D32;  /* Green */
+            color: white;               /* White text */
+            font-size: 14px;            /* Large text */
+            border-radius: 10px;        /* Rounded corners */
+            padding: 4px;
+        }
+        """
+        return plotLabelStyle
 
     @staticmethod
     def LabelStyleRed():
@@ -185,6 +198,19 @@ class Stylesheets:
             min-width: 150px;           /* Minimum width to ensure a consistent look */
             max-width: 200px;           /* Maximum width before wrapping */
             height: auto;               /* Allows height to expand for wrapped text */
+        }
+        """
+        return plotLabelStyle
+    
+    @staticmethod
+    def LabelStyleRedMini():
+        plotLabelStyle = """
+        QLabel {
+            background-color: #C62828;  /* Red */
+            color: white;               /* White text */
+            font-size: 14px;            /* Large text */
+            border-radius: 10px;        /* Rounded corners */
+            padding: 4px;
         }
         """
         return plotLabelStyle

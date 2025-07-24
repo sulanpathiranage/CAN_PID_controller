@@ -592,10 +592,10 @@ class CreatePlotLabel():
         self.label.setText(text)
 
     def setLabelColorGreen(self):
-        self.label.setStyleSheet(Stylesheets.LabelStyleGreen())
+        self.label.setStyleSheet(Stylesheets.LabelStyleGreenMini())
 
     def setLabelColorRed(self):
-        self.label.setStyleSheet(Stylesheets.LabelStyleRed())
+        self.label.setStyleSheet(Stylesheets.LabelStyleRedMini())
 
     def setLabelColorDefault(self):
         self.label.setStyleSheet(Stylesheets.PlotLabelStyle())
