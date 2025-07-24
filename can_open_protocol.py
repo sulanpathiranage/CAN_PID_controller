@@ -293,12 +293,15 @@ class CanOpen:
     
     @staticmethod
     def process_to_16bitanalog(process_scale, process_max):
+        raw_four_value = 13109 #physically verified bit value that outputs 4 mA
+        raw_max_value = 65535 #16bit scale
+        four_twenty_scale = raw_max_value - raw_four_value # 20mA bit value - 4mA bit value
         if  process_scale == process_max:
-            output = 0xFFFF
+            output = raw_max_value
         elif process_scale <= 0:
-            output = 13109
+            output = raw_four_value
         else: 
-            output = ((process_scale/process_max)*52426) + 13109
+            output = ((process_scale/process_max)*four_twenty_scale) + raw_four_value
 
         return int(output)
 

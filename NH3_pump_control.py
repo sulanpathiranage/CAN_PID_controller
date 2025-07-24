@@ -92,7 +92,7 @@ class NH3PumpControlScene(QWidget):
             ("TI10119", "temperature", (720, -190), "°C", True),
             ("TI10122", "temperature", (520, -190), "°C", True),  # Added TI10122
             ("FT10124", "current_feedback", (710, 160), "kg/h", True),
-            ("FT10106", "current_feedback", (-550, -325), "kg/h", True),
+            ("FT10106", "current_feedback", (-375, -335), "kg/h", True),  
             ("PIC10126", "current_feedback", (600, -480), "psig", True),
             ("PI10130", "pressure", (810, -190), "psi", True),
             ("PT10135", "pressure", (-700, -325), "psi", True),
@@ -165,7 +165,7 @@ class NH3PumpControlScene(QWidget):
         # )
 
         # ESV 10107 Valve
-        self.esv10107Label = CreatePlotLabel(self.systemControlScene, -375, -335)
+        self.esv10107Label = CreatePlotLabel(self.systemControlScene,-550, -325)
         self.esv10107Label.setLabelText("CLOSED") # Initial state text-
 
         # Create a QPushButton for interaction
@@ -176,7 +176,7 @@ class NH3PumpControlScene(QWidget):
 
         # Add the QPushButton to the scene via a proxy widget
         esv10107_button_proxy = self.systemControlScene.addWidget(self.esv10107PushButton)
-        esv10107_button_proxy.setPos(-375, -300) # Position where you want the interactive button
+        esv10107_button_proxy.setPos(-570, -300) # Position where you want the interactive button
 
         # Connect the QPushButton's toggled signal to the _toggle_digital_output
         self.esv10107PushButton.toggled.connect(
@@ -294,7 +294,7 @@ class NH3PumpControlScene(QWidget):
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "PSV\n10402", 600, 100)
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "FV\n10129", -75, -600)
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "FV\n10106", -475, -250)
-        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "SV\n10107", -375, -250)
+        SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "SV\n10107", -550, -250)
         SchematicHelperFunctions.CreateCircleLabel(self.systemControlScene, 25, "SV\n10112", -425, 0)
 
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10117", -150, 300)
@@ -309,7 +309,7 @@ class NH3PumpControlScene(QWidget):
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "01", 400, 200)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "TI", "10122", 550, -100)
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PI", "10123", 600, -100)
-        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "FIC", "10106", -550, -250)
+        SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "FIC", "10106",-375, -250 ) 
 
         SchematicHelperFunctions.CreateTaggedCircleBox(self.systemControlScene, 25, "PT", "10135", -700, -250)
 
