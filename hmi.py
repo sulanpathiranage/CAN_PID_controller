@@ -213,16 +213,26 @@ class PermanentRightHandDisplay(QWidget):
         self.eStopButton.clicked.connect(self.toggleEStop)
         layout.addWidget(self.eStopButton)
 
-        self.interlockBeginButton = QCheckBox("ENABLE INTERLOCKS")
-        self.interlockBeginButton.setFixedSize(150, 100)
-        self.interlockBeginButton.clicked.connect(self.toggleInterlock)
-        layout.addWidget(self.interlockBeginButton)
+        # self.interlockBeginButton = QCheckBox("ENABLE INTERLOCKS")
+        # self.interlockBeginButton.setFixedSize(150, 100)
+        # self.interlockBeginButton.clicked.connect(self.toggleInterlock)
+        # layout.addWidget(self.interlockBeginButton)
+        lbl_list = ["PT10110", "TI10117", "PT10120", "TI10119","FT10124"]
+        self.interlock_toggles: list[QCheckBox] = []
+
+        for i, name in enumerate(lbl_list):
+            checkbox = QCheckBox(f"Enable Interlock {name}")
+            checkbox.setChecked(True)
+            checkbox.clicked.connect(lambda _, idx=i: self.toggle_single_interlock(idx))
+            layout.addWidget(checkbox)
+            self.interlock_toggles.append(checkbox)
 
         self._interlock_labels: list[QLabel] = []
-        for idx in range(1, 5):
-            lbl = QLabel(f"Interlock {idx}: OK")
+        for idx in range(0, 5):
+            lbl = QLabel(f"Interlock {lbl_list[idx]}: OK")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet(Stylesheets.LabelStyleGreen())   # green “OK”
+            lbl.setWordWrap(True)
             layout.addWidget(lbl)
             self._interlock_labels.append(lbl)
 
@@ -230,7 +240,7 @@ class PermanentRightHandDisplay(QWidget):
         self.esv1Button = QPushButton("ESV 10107")
         self.esv1Button.setCheckable(True)
         self.esv1Button.setFixedSize(150, 80)
-        self.esv1Button.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
+        self.esv1Button.setStyleSheet(Stylesheets.ESVPushButtonStyleSheet())
         self.esv1Button.toggled.connect(self.toggleESV1)
         self.esv1Button.toggled.connect(
             lambda checked: self._update_esv_caption(self.esv1Button,
@@ -241,7 +251,7 @@ class PermanentRightHandDisplay(QWidget):
         self.esv2Button = QPushButton("ESV 10112")
         self.esv2Button.setCheckable(True)
         self.esv2Button.setFixedSize(150, 80)
-        self.esv2Button.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
+        self.esv2Button.setStyleSheet(Stylesheets.ESVPushButtonStyleSheet())
         self.esv2Button.toggled.connect(self.toggleESV2)
         self.esv2Button.toggled.connect(
             lambda checked: self._update_esv_caption(self.esv2Button,
@@ -252,22 +262,24 @@ class PermanentRightHandDisplay(QWidget):
         self.data_manager.e_stop_toggled.connect(self._update_e_stop_button_text)
         self.data_manager.esv1_state_toggled.connect(self.esv1Button.setChecked)
         self.data_manager.esv2_state_toggled.connect(self.esv2Button.setChecked)
+        
+        interlock_signals = [
+            self.data_manager.interlock1_detected,
+            self.data_manager.interlock2_detected,
+            self.data_manager.interlock3_detected,
+            self.data_manager.interlock4_detected,
+            self.data_manager.interlock5_detected,
+        ]
 
-        self.data_manager.interlock1_detected.connect(
-            lambda active, flags: self.on_interlock(0, active, flags))
-        self.data_manager.interlock2_detected.connect(
-            lambda active, flags: self.on_interlock(1, active, flags))
-        self.data_manager.interlock3_detected.connect(
-            lambda active, flags: self.on_interlock(2, active, flags))
-        self.data_manager.interlock4_detected.connect(
-            lambda active, flags: self.on_interlock(3, active, flags))
+        for i, signal in enumerate(interlock_signals):
+            signal.connect(lambda active, flags, idx=i: self.on_interlock(idx, active, flags, lbl_list))
 
-    def on_interlock(self, label_index: int, active: bool, fl: list[bool]):
+    def on_interlock(self, label_index: int, active: bool, fl: list[bool], label_list):
         """fl = [lowWarn, lowAlarm, highWarn, highAlarm]"""
         label = self._interlock_labels[label_index]
 
         if not active:                       
-            label.setText(f"Interlock {label_index+1}: OK")
+            label.setText(f"Interlock {label_list[label_index]}: OK")
             label.setStyleSheet(Stylesheets.LabelStyleGreen())
             return
 
@@ -277,10 +289,10 @@ class PermanentRightHandDisplay(QWidget):
             state_txt = "LOW ALARM" if ls else "HIGH ALARM"
             label.setStyleSheet(Stylesheets.LabelStyleRed())
         else:                             # warnings only
-            state_txt = "LOW WARN" if lw else "HIGH WARNING"
+            state_txt = "LOW WARNING" if lw else "HIGH WARNING"
             label.setStyleSheet(Stylesheets.LabelStyleYellow())   
 
-        label.setText(f"Interlock {label_index+1}: {state_txt}")
+        label.setText(f"Interlock {label_list[label_index]}: {state_txt}")
 
     def _update_esv_caption(self, btn: QPushButton, base: str, open_: bool):
         btn.setText(f"{base}: {'OPEN' if open_ else 'CLOSED'}")
@@ -288,8 +300,9 @@ class PermanentRightHandDisplay(QWidget):
     def toggleEStop(self):
         self.data_manager.toggle_e_stop_state()
 
-    def toggleInterlock(self):
-        self.data_manager.toggle_interlocks()
+    def toggle_single_interlock(self, index: int):
+        self.data_manager.set_interlock_enabled(index, self.interlock_toggles[index].isChecked())
+
 
     def toggleESV1(self, checked):
         self.data_manager.set_esv1(checked)
@@ -354,7 +367,7 @@ class PumpControlWidget(QWidget):
             lambda val: self.output_label.setText(f"PID Output: {val:.1f} %")
         )
 
-    def _on_slider_changed(self, value: int):
+    def _on_slider_changed(self, value: float):
         self.speed_entry.setText(str(value))
         self.data_manager.set_pump_speed(value)
 
@@ -362,7 +375,7 @@ class PumpControlWidget(QWidget):
         try:
             value = int(self.speed_entry.text())
             value = max(0, min(100, value))
-            self.speed_slider.setValue(value)
+            self.speed_slider.setValue(int(value))
             self.data_manager.set_pump_speed(value)
         except ValueError:
             pass  # ignore invalid input
@@ -418,19 +431,34 @@ class SensorDisplayWidget(QWidget):
         layout = QVBoxLayout(self)
 
         self._pump_name, self.flow1_name, self.flow2_name,self.placeholder, self.pic_name  = data_manager.deditec_feedback
+        self.deditec_unit_list = ["%", "kg/h", "kg/h", "","psig"]
+        index = 0
+        self.current_labels = []
+        for name in self.data_manager.deditec_feedback_names:
+            if index == 3:
+                index = index +1
+                continue
+            label = QLabel(f"{name}: -- {self.deditec_unit_list[index]}")
+            label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            label.setStyleSheet(Stylesheets.LabelStyleSheet())
+            self.current_labels.append(label)
+            layout.addWidget(label)
+            index = index +1
 
-        self.pump_feedback_label = QLabel(f"{self._pump_name}: -- %")
-        self.flow1_feedback_label = QLabel(f"{self.flow1_name}: -- kg/h")
-        self.flow2_feedback_label = QLabel(f"{self.flow2_name}: -- kg/h")
-        self.pic_feedback_label = QLabel(f"{self.pic_name}: -- psig")
-        layout.addWidget(self.pump_feedback_label)
-        layout.addWidget(self.flow1_feedback_label)
-        layout.addWidget(self.flow2_feedback_label)
-        layout.addWidget(self.pic_feedback_label)
 
-        pressure_header_label = QLabel("Pressure Sensors")
-        pressure_header_label.setStyleSheet(Stylesheets.LabelStyleSheet())
-        layout.addWidget(pressure_header_label)
+
+        # self.pump_feedback_label = QLabel(f"{self._pump_name}: -- %")
+        # self.flow1_feedback_label = QLabel(f"{self.flow1_name}: -- kg/h")
+        # self.flow2_feedback_label = QLabel(f"{self.flow2_name}: -- kg/h")
+        # self.pic_feedback_label = QLabel(f"{self.pic_name}: -- psig")
+        # layout.addWidget(self.pump_feedback_label)
+        # layout.addWidget(self.flow1_feedback_label)
+        # layout.addWidget(self.flow2_feedback_label)
+        # layout.addWidget(self.pic_feedback_label)
+
+        # pressure_header_label = QLabel("Pressure Sensors")
+        # pressure_header_label.setStyleSheet(Stylesheets.LabelStyleSheet())
+        # layout.addWidget(pressure_header_label)
 
         self.pressure_labels = []
         for name in self.data_manager.pressure_sensor_names:
@@ -442,21 +470,24 @@ class SensorDisplayWidget(QWidget):
 
         layout.addSpacing(10)
         self.temperature_labels = []
-        temperature_header_label = QLabel("Temperature Sensors")
-        temperature_header_label.setStyleSheet(Stylesheets.LabelStyleSheet())
-        layout.addWidget(temperature_header_label)
+        for name in self.data_manager.temperature_sensor_names:
+            label = QLabel(f"{name}: -- psi")
+            label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            label.setStyleSheet(Stylesheets.LabelStyleSheet())
+            self.temperature_labels.append(label)
+            layout.addWidget(label)
+        # layout.addWidget(temperature_header_label)
 
         layout.addStretch()
 
         self.data_manager.pressure_updated.connect(self.update_pressures)
         self.data_manager.temperature_updated.connect(self.update_temperatures)
-        self.data_manager.pump_feedback_updated.connect(self.update_feedback)
+        self.data_manager.current_feedback_updated.connect(self.update_feedback)
 
-    def update_feedback(self, pump_percent: float, flow_rate1: float, flow_rate2:float, pressure:float):
-        self.pump_feedback_label.setText(f"{self._pump_name}: {pump_percent:.1f} %")
-        self.flow1_feedback_label.setText(f"{self.flow1_name}: {flow_rate1:.1f} kg/h")
-        self.flow2_feedback_label.setText(f"{self.flow2_name}: {flow_rate2:.1f} kg/h")
-        self.pic_feedback_label.setText(f"{self.pic_name}: {pressure:.1f} psig")
+    def update_feedback(self, currents: List[float]):
+        for i, current in enumerate(currents):
+                    if i < len(self.current_labels) and i < len(self.data_manager.deditec_feedback_names):
+                        self.current_labels[i].setText(f"{self.data_manager.deditec_feedback_names[i]}: {current:.1f} {self.deditec_unit_list[i]}")
 
 
 
@@ -505,11 +536,11 @@ class PIDControlWidget(QWidget):
         layout.addWidget(self.toggle_button, 1, 0, 1, 2) # Span 2 columns
 
         self.kp_input = QDoubleSpinBox()
-        self.kp_input.setValue(1.0) 
+        self.kp_input.setValue(1.0)
         self.ki_input = QDoubleSpinBox()
-        self.ki_input.setValue(0.0) 
+        self.ki_input.setValue(0.0)
         self.kd_input = QDoubleSpinBox()
-        self.kd_input.setValue(0.0) 
+        self.kd_input.setValue(0.0)
         self.setpoint_input = QDoubleSpinBox()
         self.setpoint_input.setValue(0.0) 
 
@@ -552,10 +583,10 @@ class PIDControlWidget(QWidget):
         Retrieves initial PID parameters and state from the SystemDataManager
         and sets the GUI elements accordingly.
         """
-        self.kp_input.setValue(self.data_manager.pid_controller.kp)
-        self.ki_input.setValue(self.data_manager.pid_controller.ki)
-        self.kd_input.setValue(self.data_manager.pid_controller.kd)
-        self.setpoint_input.setValue(self.data_manager._pid_setpoint) 
+        self.kp_input.setValue(int(self.data_manager.pid_controller.kp))
+        self.ki_input.setValue(int(self.data_manager.pid_controller.ki))
+        self.kd_input.setValue(int(self.data_manager.pid_controller.kd))
+        self.setpoint_input.setValue(int(self.data_manager._pid_setpoint)) 
 
         self._update_toggle_button_state(self.data_manager._pid_enabled)
         self._update_output_display(self.data_manager._commanded_pid_output) 

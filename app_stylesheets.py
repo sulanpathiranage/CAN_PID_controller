@@ -25,6 +25,32 @@ class Stylesheets:
             }
         """
         return pushButtonStyle
+    @staticmethod 
+    def ESVPushButtonStyleSheet():
+        pushButtonStyle = """
+            QPushButton {
+                background-color: #486a8c;       /* Muted blue-gray */
+                color: #ffffff;
+                border-radius: 10px;
+                padding: 4px 10px;
+                font: 14px;
+                font-weight: 500;
+            }
+
+            QPushButton:hover {
+                background-color: #4c5a6a;
+            }
+
+            QPushButton:pressed {
+                background-color: #2c3a4a;
+            }
+
+            QPushButton:disabled {
+                background-color: #2a2f35;
+                color: #888888;
+            }
+        """
+        return pushButtonStyle
     
     @staticmethod   
     def TogglePushButtonStyleSheet():
@@ -59,7 +85,7 @@ class Stylesheets:
             background-color: #c94444;
             color: white;
             border: none;
-            border-radius: 2px;
+            border-radius: 10px;        /* Rounded corners */
             padding: 8px 16px;
             font-weight: 500;
             font-size: 14px;
@@ -131,41 +157,50 @@ class Stylesheets:
         """
         return plotLabelStyle
 
-    @staticmethod    
+    @staticmethod
     def LabelStyleGreen():
         plotLabelStyle = """
         QLabel {
             background-color: #2E7D32;  /* Green */
             color: white;               /* White text */
-            font-size: 18px;            /* Large text */
+            font-size: 14px;            /* Large text */
             border-radius: 10px;        /* Rounded corners */
-            padding: 6px
+            padding: 4px;
+            min-width: 150px;           /* Minimum width to ensure a consistent look */
+            max-width: 200px;           /* Maximum width before wrapping */
+            height: auto;               /* Allows height to expand for wrapped text */
         }
         """
         return plotLabelStyle
 
-    @staticmethod    
+    @staticmethod
     def LabelStyleRed():
         plotLabelStyle = """
         QLabel {
             background-color: #C62828;  /* Red */
             color: white;               /* White text */
-            font-size: 18px;            /* Large text */
+            font-size: 14px;            /* Large text */
             border-radius: 10px;        /* Rounded corners */
-            padding: 6px
+            padding: 4px;
+            min-width: 150px;           /* Minimum width to ensure a consistent look */
+            max-width: 200px;           /* Maximum width before wrapping */
+            height: auto;               /* Allows height to expand for wrapped text */
         }
         """
         return plotLabelStyle
 
-    @staticmethod    
+    @staticmethod
     def LabelStyleYellow():
         plotLabelStyle = """
         QLabel {
-            background-color: #FFDE21;  /* yellow */
+            background-color: #B8860B;  /* Dark Goldenrod - yellow */
             color: white;               /* White text */
-            font-size: 18px;            /* Large text */
+            font-size: 14px;            /* Large text */
             border-radius: 10px;        /* Rounded corners */
-            padding: 6px
+            padding: 4px;
+            min-width: 150px;           /* Minimum width to ensure a consistent look */
+            max-width: 200px;           /* Maximum width before wrapping */
+            height: auto;               /* Allows height to expand for wrapped text */
         }
         """
         return plotLabelStyle
