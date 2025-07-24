@@ -215,7 +215,6 @@ class PermanentRightHandDisplay(QWidget):
 
         self.interlockBeginButton = QCheckBox("ENABLE INTERLOCKS")
         self.interlockBeginButton.setFixedSize(150, 100)
-        # self.eStopButton.setStyleSheet(Stylesheets.EStopPushButtonStyleSheet())
         self.interlockBeginButton.clicked.connect(self.toggleInterlock)
         layout.addWidget(self.interlockBeginButton)
 
