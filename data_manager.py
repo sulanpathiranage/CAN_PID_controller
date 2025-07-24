@@ -693,8 +693,8 @@ class SystemDataManager(QObject):
             else:
                 interlock3 = FaultManager.limit_fault(ti10119_val, 47, 45, 55, 60) 
                 # interlock3 = FaultManager.limit_fault(ti10119_val, 0, 45, 55, 60)  #FOR TESTING ONLY!!
-            # interlock4 = FaultManager.limit_fault(FT10124_val, 25, 20, 675, no_hi_limit)
-            interlock4 = FaultManager.limit_fault(FT10124_val, no_lo_limit, 20, 675, no_hi_limit) #FOR TESTING ONLY!!
+            interlock4 = FaultManager.limit_fault(FT10124_val, 1.16, 0.93, 31.3, no_hi_limit)
+            #interlock4 = FaultManager.limit_fault(FT10124_val, no_lo_limit, 20, 675, no_hi_limit) #FOR TESTING ONLY!!
 
 
         if any(interlock1):
