@@ -1,6 +1,6 @@
 
 class Stylesheets:
-
+    @staticmethod   
     def GenericPushButtonStyleSheet():
         pushButtonStyle = """
             QPushButton {
@@ -26,6 +26,7 @@ class Stylesheets:
         """
         return pushButtonStyle
     
+    @staticmethod   
     def TogglePushButtonStyleSheet():
         pushButtonStyle = """
             QPushButton {
@@ -50,7 +51,8 @@ class Stylesheets:
             }
         """
         return pushButtonStyle
-    
+
+    @staticmethod    
     def EStopPushButtonStyleSheet():
         eStopPushButtonSyle = """
         QPushButton {
@@ -77,7 +79,8 @@ class Stylesheets:
         }
         """
         return eStopPushButtonSyle
-    
+
+    @staticmethod    
     def LabelStlyeSheet():
         labelStyleSheet = """
         QLabel {
@@ -114,7 +117,8 @@ class Stylesheets:
             font-weight: bold;
         }"""
         return labelStyleSheet
-    
+
+    @staticmethod    
     def PlotLabelStyle():
         plotLabelStyle = """
         QLabel {
@@ -126,7 +130,8 @@ class Stylesheets:
         }
         """
         return plotLabelStyle
-    
+
+    @staticmethod    
     def LabelStyleGreen():
         plotLabelStyle = """
         QLabel {
@@ -138,7 +143,8 @@ class Stylesheets:
         }
         """
         return plotLabelStyle
-    
+
+    @staticmethod    
     def LabelStyleRed():
         plotLabelStyle = """
         QLabel {
@@ -150,7 +156,8 @@ class Stylesheets:
         }
         """
         return plotLabelStyle
-    
+
+    @staticmethod    
     def LabelStyleYellow():
         plotLabelStyle = """
         QLabel {
@@ -163,10 +170,12 @@ class Stylesheets:
         """
         return plotLabelStyle
 
+    @staticmethod
     def LineEditStyleSheet():
         lineEditStyle = ""
         return lineEditStyle
-    
+
+    @staticmethod    
     def TabWidgetStyleSheet():
         tabWidgetStyle = """
             QTabWidget::pane {
@@ -200,6 +209,7 @@ class Stylesheets:
             """
         return tabWidgetStyle
     
+    @staticmethod    
     def CheckBoxStyleSheet():
         checkBoxStyle = """
             QCheckBox {
@@ -287,7 +297,7 @@ class Stylesheets:
         QScrollBar:horizontal { height: 8px; }
         """
 
-    
+    @staticmethod    
     def GenericScrollAreaStyleSheet():
         genericScrollAreaStyleSheet = """
             QScrollBar:vertical {
@@ -310,7 +320,8 @@ class Stylesheets:
             }
         """
         return genericScrollAreaStyleSheet
-    
+
+    @staticmethod    
     def LabelStyleSheet():
         labelStyleSheet = """
             QLabel {

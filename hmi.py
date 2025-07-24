@@ -145,7 +145,7 @@ class PyqtgraphPlotWidget(QWidget):
             
 
 
-        self.layout.addLayout(plot_layout)
+        self.layout.addLayout(plot_layout) # type: ignore
 
         self.data_manager.pressure_updated.connect(self._on_pressure_data_updated)
         self.data_manager.temperature_updated.connect(self._on_temperature_data_updated)
@@ -320,7 +320,7 @@ class PumpControlWidget(QWidget):
         form_layout.addWidget(QLabel("Pump State:"), 0, 0)
         form_layout.addWidget(self.pump_on_checkbox, 0, 1, 1, 2)
         self.pump_on_checkbox.stateChanged.connect(
-            lambda state: self.data_manager.set_pump_enabled(state == Qt.Checked)
+            lambda state: self.data_manager.set_pump_enabled(state == Qt.CheckState.Checked.value)     
         )
 
         # Speed controls
@@ -429,22 +429,23 @@ class SensorDisplayWidget(QWidget):
         layout.addWidget(self.flow2_feedback_label)
         layout.addWidget(self.pic_feedback_label)
 
+        pressure_header_label = QLabel("Pressure Sensors")
+        pressure_header_label.setStyleSheet(Stylesheets.LabelStyleSheet())
+        layout.addWidget(pressure_header_label)
 
-        layout.addWidget(QLabel("Pressure Sensors", styleSheet=Stylesheets.LabelStyleSheet()))
         self.pressure_labels = []
         for name in self.data_manager.pressure_sensor_names:
-            label = QLabel(f"{name}: -- psi", alignment=Qt.AlignmentFlag.AlignLeft, styleSheet=Stylesheets.LabelStyleSheet())
+            label = QLabel(f"{name}: -- psi")
+            label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            label.setStyleSheet(Stylesheets.LabelStyleSheet())
             self.pressure_labels.append(label)
             layout.addWidget(label)
 
         layout.addSpacing(10)
-
-        layout.addWidget(QLabel("Temperature Sensors", styleSheet=Stylesheets.LabelStyleSheet()))
         self.temperature_labels = []
-        for name in self.data_manager.temperature_sensor_names:
-            label = QLabel(f"{name}: -- °C", alignment=Qt.AlignmentFlag.AlignLeft, styleSheet=Stylesheets.LabelStyleSheet())
-            self.temperature_labels.append(label)
-            layout.addWidget(label)
+        temperature_header_label = QLabel("Temperature Sensors")
+        temperature_header_label.setStyleSheet(Stylesheets.LabelStyleSheet())
+        layout.addWidget(temperature_header_label)
 
         layout.addStretch()
 
@@ -487,7 +488,8 @@ class PIDControlWidget(QWidget):
         
         self.output_label.setStyleSheet("color: #333;")
         layout.addWidget(self.output_label, 0, 0, 1, 2)
-        self.toggle_button = QPushButton("Enable PID", checkable=True)
+        self.toggle_button = QPushButton("Enable PID")
+        self.toggle_button.setCheckable(True)
         self.toggle_button.setStyleSheet("""
             QPushButton {
                 background-color: #007ACC;
@@ -503,13 +505,17 @@ class PIDControlWidget(QWidget):
 
         layout.addWidget(self.toggle_button, 1, 0, 1, 2) # Span 2 columns
 
-        self.kp_input = QDoubleSpinBox(value=1.0)
-        self.ki_input = QDoubleSpinBox(value=0.0)
-        self.kd_input = QDoubleSpinBox(value=0.0)
-        self.setpoint_input = QDoubleSpinBox(value=0)
+        self.kp_input = QDoubleSpinBox()
+        self.kp_input.setValue(1.0) 
+        self.ki_input = QDoubleSpinBox()
+        self.ki_input.setValue(0.0) 
+        self.kd_input = QDoubleSpinBox()
+        self.kd_input.setValue(0.0) 
+        self.setpoint_input = QDoubleSpinBox()
+        self.setpoint_input.setValue(0.0) 
 
         spinboxes = [self.kp_input, self.ki_input, self.kd_input, self.setpoint_input]
-        labels = ["Kp", "Ki", "Kd", "Flow Setpoint"] # Assuming "Flow Setpoint" directly corresponds to PID setpoint
+        labels = ["Kp", "Ki", "Kd", "Flow Setpoint"] 
         index = 2
         for label, spinbox in zip(labels, spinboxes):
             spinbox.setRange(0, 1000)
@@ -571,21 +577,35 @@ class PumpControlWindow(QWidget):
         self.process_control = ProcessControlWidgets(self.data_manager)
         self.permanentRightHandControl = PermanentRightHandDisplay(self.data_manager)
 
-        self.log_filename_entry = QLineEdit(placeholderText="Enter log filename...")
-        self.log_button = QPushButton("Start Logging", clicked=self._toggle_logging, styleSheet=Stylesheets.GenericPushButtonStyleSheet())
+        self.log_filename_entry = QLineEdit()
+        self.log_filename_entry.setPlaceholderText("Enter log filename...")
 
-        self.connect_button = QPushButton("Connect CAN", clicked=self._toggle_can_connection, styleSheet=Stylesheets.GenericPushButtonStyleSheet())
+        self.log_button = QPushButton("Start Logging")
+        self.log_button.clicked.connect(self._toggle_logging)
+        self.log_button.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
 
-        self.status_bar = QLabel("Status: Idle", alignment=Qt.AlignmentFlag.AlignCenter, styleSheet=Stylesheets.LabelStyleSheet(), wordWrap=True)
+        self.connect_button = QPushButton("Connect CAN")
+        self.connect_button.clicked.connect(self._toggle_can_connection)
+        self.connect_button.setStyleSheet(Stylesheets.GenericPushButtonStyleSheet())
+
+        self.status_bar = QLabel("Status: Idle")
+        self.status_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_bar.setStyleSheet(Stylesheets.LabelStyleSheet())
+        self.status_bar.setWordWrap(True)
 
         main_layout = QHBoxLayout(self)
 
-        scroll_area = QScrollArea(widgetResizable=True, horizontalScrollBarPolicy=Qt.ScrollBarPolicy.ScrollBarAlwaysOff, styleSheet=Stylesheets.GenericScrollAreaStyleSheet())
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setStyleSheet(Stylesheets.GenericScrollAreaStyleSheet())
+
         side_panel_content = QWidget()
         scroll_area.setWidget(side_panel_content)
         side_panel_layout = QVBoxLayout(side_panel_content)
         side_panel_layout.addWidget(self.connect_button)
-        log_row = QHBoxLayout(spacing=5)
+        log_row = QHBoxLayout()
+        log_row.setSpacing(5)
         log_row.addWidget(QLabel("Log File:"))
         log_row.addWidget(self.log_filename_entry)
         side_panel_layout.addLayout(log_row)
@@ -703,10 +723,12 @@ class PAndIDGraphicWindow(QWidget):
         self.nh3pump = NH3PumpControlScene(self.data_manager)
         # self.nh3vaporizer = NH3VaporizerControlScene()
 
-        self.tab_widget = QTabWidget(styleSheet=Stylesheets.TabWidgetStyleSheet())
-
-        nh3_pump_test_tab = QWidget(styleSheet="background-color: #2e2e2e;")
-        nh3_vaporizer_test_tab = QWidget(styleSheet="background-color: #2e2e2e;")
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet(Stylesheets.TabWidgetStyleSheet())
+        nh3_pump_test_tab = QWidget()
+        nh3_pump_test_tab.setStyleSheet("background-color: #2e2e2e;")
+        nh3_vaporizer_test_tab = QWidget()
+        nh3_vaporizer_test_tab.setStyleSheet("background-color: #2e2e2e;")
 
         QVBoxLayout(nh3_pump_test_tab).addWidget(self.nh3pump)
         # QVBoxLayout(nh3_vaporizer_test_tab).addWidget(self.nh3vaporizer)

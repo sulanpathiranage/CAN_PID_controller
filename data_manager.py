@@ -1,9 +1,10 @@
 import asyncio
 import can
 from collections import deque
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, Optional
 from datetime import datetime
 import csv
+import time
 
 from PyQt6.QtCore import QObject, pyqtSignal
 from fault_manager import FaultManager
@@ -13,15 +14,16 @@ from can_open_protocol import CanOpen
 from pid_controller import PIDController
 
 class SystemDataManager(QObject):
+
+    #signals to emit to GUI
     pressure_updated = pyqtSignal(list)
     temperature_updated = pyqtSignal(list)
     pump_feedback_updated = pyqtSignal(float, float, float, float)
     current_feedback_updated = pyqtSignal(list)
-
     e_stop_toggled = pyqtSignal(bool)
     esv1_state_toggled = pyqtSignal(bool)
     esv2_state_toggled = pyqtSignal(bool)
-    mfm1_setpoint_updated = pyqtSignal(float)   # 0‑100 %
+    mfm1_setpoint_updated = pyqtSignal(float)  
     mfm2_setpoint_updated = pyqtSignal(float)
     pic_setpoint_updated = pyqtSignal(float)
     can_connection_status_changed = pyqtSignal(bool) 
@@ -39,13 +41,7 @@ class SystemDataManager(QObject):
     pump_enabled = pyqtSignal(bool)
     pump_speed_updated = pyqtSignal(float)
 
-    # pt_info = {
-    #     "PT10110": 30,
-    #     "PT10120": 60,
-    #     "PT10130": 60,
-    #     "PT10118": 60,
-    # }
-    # tc_designators = ["TI10111","TI10115","TI10116","TI10117"]
+    #sensor defintions as defined by channel/msg order
     pt_info = {
        "PT10110": 30, 
        "PT10123": 60, 
@@ -56,16 +52,14 @@ class SystemDataManager(QObject):
        "PT10135": 60 
     }
     tc_designators = ["TI10111","TI10115","TI10116","TI10117", "TI01","TI10121", "TI10119","TI10122"]
-
     deditec_info = {
         "PumpFeedback": 100,    # percent
         "FT10124":      32.8,   # kg/h
         "FT10106":      32.8,    #kg/h
-        "Blank":        100,
+        "Blank":        100,    #placeholder for broken channels
         "PIC10126":     250     #psig
     }
-
-    pt_designators   = list(pt_info)         
+    pt_designators   = list(pt_info)    #list for ordering     
     deditec_feedback = list(deditec_info)    
 
 
@@ -89,6 +83,15 @@ class SystemDataManager(QObject):
 
         self.INVALID_TEMP_MARKER = -3276.8
         self.interlock_flag = False
+
+        #interlock debounce variables
+        self._interlock_fault_timestamps: dict[str, Optional[float]] = {
+            "interlock1": None,
+            "interlock2": None,
+            "interlock3": None,
+            "interlock4": None,
+        }
+        self._interlock_hold_duration = 1.0  # seconds
 
         self.esv_state = [0, 0]
         self._esv1_cmd = False
@@ -224,32 +227,32 @@ class SystemDataManager(QObject):
 
                         # Add sensor data
                         for designator in self.pt_designators:
-                            row_data.append(self.get_latest_sensor_value(designator))
+                            row_data.append(str(self.get_latest_sensor_value(designator)))
                         for designator in self.tc_designators:
-                            row_data.append(self.get_latest_sensor_value(designator))
+                            row_data.append(str(self.get_latest_sensor_value(designator)))
                         for designator in self.deditec_feedback:
-                            row_data.append(self.get_latest_sensor_value(designator))
+                            row_data.append(str(self.get_latest_sensor_value(designator)))
 
                         # Add commanded setpoints
-                        row_data.append(self.mfm_setpoints[0])
-                        row_data.append(self.mfm_setpoints[1])
-                        row_data.append(self._pid_setpoint) # Use _pid_setpoint for the PID setpoint
+                        row_data.append(str(self.mfm_setpoints[0]))
+                        row_data.append(str(self.mfm_setpoints[1]))
+                        row_data.append(str(self._pid_setpoint)) # Use _pid_setpoint for the PID setpoint
 
                         # Add commanded states
-                        row_data.append(self._commanded_pump_on)
-                        row_data.append(self._commanded_manual_speed)
-                        row_data.append(self._commanded_pid_output)
+                        row_data.append(str(self._commanded_pump_on))
+                        row_data.append(str(self._commanded_manual_speed))
+                        row_data.append(str(self._commanded_pid_output))
 
                         # Add ESV states
-                        row_data.append(self.esv_state[0])
-                        row_data.append(self.esv_state[1])
+                        row_data.append(str(self.esv_state[0]))
+                        row_data.append(str(self.esv_state[1]))
 
                         # Add system flags
-                        row_data.append(self._eStopValue)
-                        row_data.append(self.interlock_flag)
+                        row_data.append(str(self._eStopValue))
+                        row_data.append(str(self.interlock_flag))
 
                         self._csv_writer.writerow(row_data)
-                        self._log_file.flush() 
+                        self._log_file.flush()  # type: ignore
 
                 except asyncio.CancelledError:
                     print("Log data task cancelled.")
@@ -502,19 +505,6 @@ class SystemDataManager(QObject):
 
         self.interlock_trigger()
 
-    # def update_commanded_pump_state(self, pump_on: int, manual_speed: int, pid_output: Union[float, None]):
-    #     """
-    #     Updates the internal state for the pump sender task.
-    #     Called by the GUI (PumpControlWindow) when pump controls or PID state changes.
-    #     """
-    #     if not self.eStopValue and not self.interlock_flag:
-    #         self._commanded_pump_on = pump_on
-    #         self._commanded_manual_speed = manual_speed
-    #         self._commanded_pid_output = pid_output
-    #     else:
-    #         self._commanded_pump_on = 0
-    #         self._commanded_manual_speed = 0
-    #         self._commanded_pid_output = 0.0
 
     def update_commanded_esv_state(self):
         if self.eStopValue or self.interlock_flag:
@@ -573,15 +563,8 @@ class SystemDataManager(QObject):
 
 
     def reset_states(self):
-        # self._commanded_manual_speed = 0
-        # self._commanded_pid_output = 0.0
-        # self._pid_enabled = False
-        # self._pid_setpoint = 0.0
-
-        # self.pump_speed_updated.emit(0)
-        # self.pid_output_updated.emit(0.0)
-        # self.pid_enabled_status_changed.emit(False)
-        # self.pid_setpoint_updated.emit(0.0)
+        """use internal setters to force 0 on estop
+        """
         self.set_pump_enabled(False)
         self.set_esv1(False)
         self.set_esv2(False)
@@ -657,71 +640,76 @@ class SystemDataManager(QObject):
 
     def interlock_trigger(self):
         """
-        Evaluates various sensor values against defined limits to determine the
-        overall system interlock status.
-        This method uses get_latest_sensor_value for sensor readings.
-        It should be called after sensor data has been updated.
+        Evaluates sensor values against limits and debounces faults to prevent
+        triggering from transient message drops. Fault must persist for >=1 second.
         """
-  
-        
         no_hi_limit = 1e6
         no_lo_limit = -1e6
 
-
         pt10110_val = self.get_latest_sensor_value("PT10110")
         pt10120_val = self.get_latest_sensor_value("PT10120")
-        ti10119_val = self.get_latest_sensor_value("TI10119") 
+        ti10119_val = self.get_latest_sensor_value("TI10119")
         try:
             ft_index = self.deditec_feedback.index("FT10124")
             FT10124_val = self._last_deditec[ft_index]
         except ValueError:
             FT10124_val = 0.0
 
-        interlock1 = [False, False, False, False]
-        interlock2 = [False, False, False, False]
-        interlock3 = [False, False, False, False]
-        interlock4 = [False, False, False, False]
-
-
+        interlock1 = interlock2 = interlock3 = interlock4 = [False] * 4
 
         if self.interlock_begin:
-            interlock1 = FaultManager.limit_fault(pt10110_val, self._bar_to_psi(2), no_lo_limit, self._bar_to_psi(7), no_hi_limit) 
-        
+            interlock1 = FaultManager.limit_fault(pt10110_val, self._bar_to_psi(2), no_lo_limit, self._bar_to_psi(7), no_hi_limit)
             interlock2 = FaultManager.limit_fault(pt10120_val, self._bar_to_psi(15), no_lo_limit, self._bar_to_psi(19), self._bar_to_psi(20))
+
             if ti10119_val == self.INVALID_TEMP_MARKER:
-                interlock3 = [True, True, True, True] 
+                interlock3 = [True] * 4
             else:
-                interlock3 = FaultManager.limit_fault(ti10119_val, 47, 45, 55, 60) 
-                # interlock3 = FaultManager.limit_fault(ti10119_val, 0, 45, 55, 60)  #FOR TESTING ONLY!!
+                interlock3 = FaultManager.limit_fault(ti10119_val, 47, 45, 55, 60)
+
             interlock4 = FaultManager.limit_fault(FT10124_val, 1.16, 0.93, 31.3, no_hi_limit)
-            #interlock4 = FaultManager.limit_fault(FT10124_val, no_lo_limit, 20, 675, no_hi_limit) #FOR TESTING ONLY!!
 
+        now = time.time()
 
-        if any(interlock1):
+        def check_hold(interlock_key, faults):
+            if any(faults):
+                ts = self._interlock_fault_timestamps[interlock_key]
+                if ts is None:
+                    self._interlock_fault_timestamps[interlock_key] = now
+                    return False
+                elif (now - ts) >= self._interlock_hold_duration:
+                    return True
+                else:
+                    return False
+            else:
+                self._interlock_fault_timestamps[interlock_key] = None
+                return False
+
+        # Debounced interlock evaluation
+        if check_hold("interlock1", interlock1):
             self.interlock1_detected.emit(True, interlock1)
         else:
             self.interlock1_detected.emit(False, interlock1)
 
-        if any(interlock2):
+        if check_hold("interlock2", interlock2):
             self.interlock2_detected.emit(True, interlock2)
         else:
             self.interlock2_detected.emit(False, interlock2)
 
-        if any(interlock3):
+        if check_hold("interlock3", interlock3):
             self.interlock3_detected.emit(True, interlock3)
         else:
             self.interlock3_detected.emit(False, interlock3)
 
-        if any(interlock4):
+        if check_hold("interlock4", interlock4):
             self.interlock4_detected.emit(True, interlock4)
         else:
             self.interlock4_detected.emit(False, interlock4)
 
         self.interlock_flag = (
-            interlock1[1] or interlock1[3] or
-            interlock2[1] or interlock2[3] or
-            interlock3[1] or interlock3[3] or
-            interlock4[1] or interlock4[3]
+            check_hold("interlock1", interlock1) and (interlock1[1] or interlock1[3]) or
+            check_hold("interlock2", interlock2) and (interlock2[1] or interlock2[3]) or
+            check_hold("interlock3", interlock3) and (interlock3[1] or interlock3[3]) or
+            check_hold("interlock4", interlock4) and (interlock4[1] or interlock4[3])
         )
 
         if self.interlock_flag and not self.eStopValue:

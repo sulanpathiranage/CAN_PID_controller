@@ -154,7 +154,7 @@ class CANIO:
         return msg
 
     @staticmethod
-    def start_listener(bus: can.Bus, resolution, data_queue: asyncio.Queue):
+    def start_listener(bus: can.BusABC, resolution, data_queue: asyncio.Queue):
         """
         Starts a CAN bus listener that parses incoming messages and puts structured data
         into a single asyncio.Queue.
@@ -255,7 +255,7 @@ class CANIO:
 
 
     @staticmethod
-    async def send_outputs(can_bus, data_queue: asyncio.Queue):
+    async def send_outputs(can_bus: can.BusABC, data_queue: asyncio.Queue):
         out_minimodul1_id = 0x600
         out_minimodul2_id = 0x601
         out_minimod_id = 0x191
