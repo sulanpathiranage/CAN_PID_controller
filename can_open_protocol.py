@@ -391,7 +391,7 @@ class CanOpen:
                 self.delta_time = time.time()
                 self.message_buffer = defaultdict(dict)
                 self.expected_ids = set(can_ids)
-#pass data into queue asynchronously
+            #pass data into queue asynchronously
             def on_message_received(self, msg: can.Message):
                 rec_id = msg.arbitration_id
                 if rec_id not in can_ids:
@@ -403,11 +403,7 @@ class CanOpen:
                 current_time = time.time()
 
                 if (self.expected_ids == received_ids) or (current_time - self.delta_time >= 0.4):
-                    if current_time - self.delta_time < 0.1:
-                        # Too soon since last push, skip this cycle to throttle at 100ms
-                        return
-
-                    # process messages as before
+                    
                     voltages = []
                     temps = []
                     currents = []
