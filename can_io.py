@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime
 from typing import List, Dict, Any
 from collections import defaultdict
+from can_open_protocol import CanOpen
 
 
 class CANIO:
@@ -154,7 +155,7 @@ class CANIO:
         return msg
 
     @staticmethod
-    def start_listener(bus: can.BusABC, resolution, data_queue: asyncio.Queue):
+    def start_listener(bus: can.Bus, data_queue: asyncio.Queue): # type: ignore
         """
         Starts a CAN bus listener that parses incoming messages and puts structured data
         into a single asyncio.Queue.
@@ -164,94 +165,98 @@ class CANIO:
                         Each message will be a dictionary with 'node_id', 'data_type', 'values', and 'timestamp'.
         """
 
-        # can_ids = {
-        #     0x180 : "micromod",
-        #     0x181 : "micromod",
-        #     0x182 : "tc_mm",
-        #     0x183 : "tc_mm",
-        #     0x184 : "tc_mm",
-        #     0x185 : "tc_mm",
-        #     0x1A3 : "deditec",
-        #     0x2A3 : "deditec",
-        #     0x3A3 : "deditec",
-        #     0x4A3 : "deditec"
-        #     }   
-        # micromod_map = [0x180, 0x181]
-        # tc_mm_map = [0x182,0x183,0x184,0x185]
-        # deditec_map = [0x1A3, 0x2A3, 0x3A3, 0x4A3]
         can_ids = {
+            0x180 : "micromod",
             0x181 : "micromod",
             0x182 : "tc_mm",
-            0x1FE : "deditec",
+            0x183 : "tc_mm",
+            0x184 : "tc_mm",
+            0x185 : "tc_mm",
+            0x1A3 : "deditec",
+            0x2A3 : "deditec",
+            0x3A3 : "deditec",
+            0x4A3 : "deditec"
             }   
-        micromod_map = [0x181]
-        tc_mm_map = [0x182]
-        deditec_map = [0x1FE]
+        micromod_map = [0x180, 0x181]
+        tc_mm_map = [0x182,0x183,0x184,0x185]
+        deditec_map = [0x1A3, 0x2A3, 0x3A3, 0x4A3]
+
 
         class _AsyncListener(can.Listener):
             """
             Internal asynchronous CAN message listener.
             This class defines how incoming CAN messages are handled.
             """
+
             def __init__(self):
                 super().__init__()
                 self.delta_time = time.time()
                 self.message_buffer = defaultdict(dict)
-
-
+                self.expected_ids = set(can_ids)
             def on_message_received(self, msg: can.Message):
-                rec_id = msg.arbitration_id                
-                if rec_id not in can_ids: 
-                    pass
-                else:
-                    message_type = can_ids[rec_id] 
-                    self.message_buffer[rec_id][message_type] = msg
-                    expected_ids = set(can_ids)
-                    received_ids = set(self.message_buffer.keys())
+                rec_id = msg.arbitration_id
+                if rec_id not in can_ids:
+                    return
+                message_type = can_ids[rec_id]
+                self.message_buffer[rec_id][message_type] = msg
 
-                    if expected_ids == received_ids or time.time()-self.delta_time >= 0.2:
-                        voltages = []
-                        temps = []
-                        currents = []
-                        for i in micromod_map: 
-                            voltages.extend(CANIO.parse_5vadc_tpdo(self.message_buffer[i]["micromod"],16))
+                received_ids = set(self.message_buffer.keys())
+                current_time = time.time()
 
-                        for j in tc_mm_map: 
+                if (self.expected_ids == received_ids) or (current_time - self.delta_time >= 0.4):
+                    
+                    voltages = []
+                    temps = []
+                    currents = []
 
-                            try:
-                                tc_data = self.message_buffer[j]["tc_mm"]
-                                temps.extend(CANIO.parse_temp_tpdo(tc_data))
-                            except KeyError:
-                                print(f"Warning: 'tc_mm' missing at buffer[{j}]")
-
-                        for k in deditec_map: 
-                            try:
-                                deditec_data = self.message_buffer[k]["deditec"]
-                                currents.extend(CANIO.parse_i_tpdo(deditec_data))
-                            except KeyError:
-                                print(f"Warning: 'deditec' missing at buffer[{k}]")
-
-
-                        parsed_message = {
-                            "timestamp": datetime.now().isoformat(),
-                            "voltage": voltages,
-                            "temperature": temps,
-                            "fourtwenty": currents
-                        }
-
-                        self.message_buffer.clear()
-
+                    for i in micromod_map:
                         try:
+                            v_data = self.message_buffer[i]["micromod"]
+                            voltages.extend(CANIO.parse_5vadc_tpdo(v_data, 16))
+                        except Exception:
+                            print(f"Warning: Micromod message for ID {hex(i)} missing. Appending 16 zeros.")
+                            voltages.extend(CANIO.parse_5vadc_tpdo(can.Message(arbitration_id=0, data=[0]*8), 16))
+
+                    for j in tc_mm_map:
+                        try:
+                            tc_data = self.message_buffer[j]["tc_mm"]
+                            temps.extend(CANIO.parse_temp_tpdo(tc_data))
+                        except KeyError:
+                            print(f"Warning: 'tc_mm' missing at buffer[{j}]")
+                            temps.extend(CANIO.parse_temp_tpdo(can.Message(arbitration_id=0, data=[0]*8)))
+
+                    for k in deditec_map:
+                        try:
+                            deditec_data = self.message_buffer[k]["deditec"]
+                            currents.extend(CANIO.parse_i_tpdo(deditec_data))
+                        except KeyError:
+                            print(f"Warning: 'deditec' missing at buffer[{k}]")
+                            currents.extend(CANIO.parse_i_tpdo(can.Message(arbitration_id=0, data=[0]*8)))
+
+                    parsed_message = {
+                        "timestamp": datetime.now().isoformat(),
+                        "voltage": voltages,
+                        "temperature": temps,
+                        "fourtwenty": currents,
+                    }
+
+                    self.message_buffer.clear()
+
+                    try:
+                        data_queue.put_nowait(parsed_message)
+                    except asyncio.QueueFull:
+                        try:
+                            data_queue.get_nowait()
                             data_queue.put_nowait(parsed_message)
-                        except asyncio.QueueFull:
-                            try:
-                                data_queue.get_nowait() 
-                                data_queue.put_nowait(parsed_message) 
-                            except Exception as e:
-                                print(f"Error handling full queue: {e}")
-                        self.delta_time = time.time()
+                        except Exception as e:
+                            print(f"Error handling full queue: {e}")
+
+                    self.delta_time = current_time
+
 
         return can.Notifier(bus, [_AsyncListener()], loop=asyncio.get_running_loop())
+
+
 
 
     @staticmethod
@@ -294,3 +299,136 @@ class CANIO:
             can_bus.send(msg_minimod)
         except Exception as e:
                 print(f"CAN Send Error: {e}")
+
+
+import can
+import time
+from datetime import datetime
+from collections import defaultdict
+from multiprocessing import Queue
+from typing import Dict, List, Optional, Any, Type
+
+
+class CANWorker(can.Listener):
+    def __init__(self, bus: can.BusABC,  rx_queue: Queue, tx_queue: Queue, io_utilities: Type[CANIO]):
+        super().__init__()
+        self.bus = bus
+        self.rx_queue = rx_queue
+        self.tx_queue = tx_queue
+
+        self.device_mappings = {
+            "micromod": [0x180, 0x181],
+            "tc_mm": [0x182, 0x183, 0x184, 0x185], 
+            "deditec": [0x1A3, 0x2A3, 0x3A3, 0x4A3]
+        }
+        
+        # Build reverse lookup
+        self.can_ids = {}
+        for device_type, ids in self.device_mappings.items():
+            for can_id in ids:
+                self.can_ids[can_id] = device_type
+        
+        self.expected_ids = set(self.can_ids.keys())
+
+        self.message_buffer = defaultdict(dict)
+        self.last_received_time = time.time()
+        self.timeout = 0.4  # seconds
+
+        self.notifier = can.Notifier(bus, [self])
+
+    def on_message_received(self, msg: can.Message):
+        rec_id = msg.arbitration_id
+        if rec_id not in self.can_ids:
+            return
+
+        msg_type = self.can_ids[rec_id]
+        self.message_buffer[rec_id][msg_type] = msg
+        self.last_received_time = time.time()
+
+        if set(self.message_buffer.keys()) == self.expected_ids:
+            self.emit_snapshot()
+
+    def emit_snapshot(self):
+        voltages, temps, currents = [], [], []
+
+        for rec_id in self.device_mappings["micromod"]:
+            msg = self._get_message(rec_id, "micromod")
+            voltages.extend(CanOpen.parse_5vadc_tpdo(msg, 16))
+
+        for rec_id in self.device_mappings["tc_mm"]:
+            msg = self._get_message(rec_id, "tc_mm")
+            temps.extend(CanOpen.parse_temp_tpdo(msg))
+
+        for rec_id in self.device_mappings["deditec"]:
+            msg = self._get_message(rec_id, "deditec")
+            currents.extend(CanOpen.parse_i_tpdo(msg))
+
+        parsed = {
+            "timestamp": datetime.now().isoformat(),
+            "voltage": voltages,
+            "temperature": temps,
+            "fourtwenty": currents
+        }
+
+        try:
+            self.rx_queue.put_nowait(parsed)
+        except:
+            try: self.rx_queue.get_nowait()
+            except: pass
+            self.rx_queue.put_nowait(parsed)
+
+        self.message_buffer.clear()
+
+    def _get_message(self, rec_id: int, msg_type: str) -> can.Message:
+        return self.message_buffer.get(rec_id, {}).get(msg_type, can.Message(arbitration_id=rec_id, data=[0] * 8))
+
+    def check_timeout_and_emit(self):
+        now = time.time()
+        if self.message_buffer and (now - self.last_received_time >= self.timeout):
+            self.emit_snapshot()
+
+    def send_outputs(self):
+        if not self.tx_queue:
+            print("NO SENDER QUEUE!")
+            return
+
+        try:
+            outputs: Dict[str, Any] = self.tx_queue.get_nowait()
+
+            out_minimodul1_id = 0x600
+            out_minimodul2_id = 0x601
+            out_minimod_id = 0x191
+
+            pump_state = outputs.get("pump_state", [0, 0])
+            esv_state = outputs.get("esv_state", [0, 0])
+            mfm_state = outputs.get("mfm_state", [0, 0])
+            pic_state = outputs.get("pic_state", 0)
+            heaterOn = True
+
+            speed = max(0.0, min(100.0, pump_state[1] if pump_state[1] is not None else 0.0))
+            raw1, raw2, raw3, raw4 = CANIO.generate_outmm_msg1(pump_state[0], speed, mfm_state[0], mfm_state[1])
+            raw5 = CANIO.generate_outmm_msg2(pic_state)
+
+            data_minimodul2 = CANIO.generate_uint_16bit_msg(int(raw5), 0, 0, 0)
+            data_minimodul = CANIO.generate_uint_16bit_msg(int(raw1), int(raw2), int(raw3), int(raw4))
+
+            msg_outmm = can.Message(arbitration_id=out_minimodul1_id, data=data_minimodul, is_extended_id=False)
+            msg_outmm1 = can.Message(arbitration_id=out_minimodul2_id, data=data_minimodul2, is_extended_id=False)
+            msg_minimod = CANIO.generic_dout_msg(heaterOn, esv_state[0], esv_state[1], 0, out_minimod_id)
+
+            self.bus.send(msg_outmm)
+            self.bus.send(msg_outmm1)
+            self.bus.send(msg_minimod)
+
+        except Exception as e:
+            print(f"[CANWorker] Error sending outputs: {e}")
+
+    def run(self):
+        while True:
+            self.check_timeout_and_emit()
+            self.send_outputs()
+            time.sleep(0.01) 
+
+    def stop(self):
+        self._running = False
+        self.notifier.stop()
