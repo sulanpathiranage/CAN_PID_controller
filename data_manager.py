@@ -13,6 +13,9 @@ from fault_manager import FaultManager
 from can_open_protocol import CanOpen
 from pid_controller import PIDController
 
+import multiprocessing
+from can_io import CANIO, CANWorker
+
 class SystemDataManager(QObject):
 
     #signals to emit to GUI
@@ -107,9 +110,15 @@ class SystemDataManager(QObject):
         self._esv1_cmd = False
         self._esv2_cmd = False
         
-        self._bus = None
+
         self._can_connected = False
-        self._can_data_queue = asyncio.Queue(maxsize=20) 
+
+        # self._can_data_queue = asyncio.Queue(maxsize=20) 
+
+        self.can_process: Optional[multiprocessing.Process] = None
+        self.can_rx_queue = multiprocessing.Queue(maxsize = 10)
+        self.can_tx_queue = multiprocessing.Queue(maxsize = 10)
+
         self._consumer_task = None
         self._sender_task = None
 
@@ -306,8 +315,9 @@ class SystemDataManager(QObject):
         self._commanded_pump_on = int(enabled)
         self.pump_enabled.emit(bool(self._commanded_pump_on))
 
-    def set_pump_speed(self, speed: float):
-        self._commanded_manual_speed = max(0.0, min(100.0, speed))
+    def set_pump_speed(self, speed):
+        casted_speed = int(speed)
+        self._commanded_manual_speed = max(0, min(100, casted_speed))
         self.pump_speed_updated.emit(self._commanded_manual_speed)
 
 
@@ -347,9 +357,6 @@ class SystemDataManager(QObject):
         key = f"interlock{index + 1}"
         if key in self._interlocks_enabled:
             self._interlocks_enabled[key] = enabled
-
-
-            
         
     def set_pic(self, value: float):
         if self.pic_setpoint != value:
@@ -415,8 +422,8 @@ class SystemDataManager(QObject):
     def _bar_to_psi(self, barg: float) -> float:
         return barg * 14.5038
     
-    def _psi_to_bar(self, barg: float) -> float:
-        return barg * 14.5038
+    def _psi_to_bar(self, psi: float) -> float:
+        return psi / 14.5038
     
     def get_pic(self) -> float:
         return self.pic_setpoint
@@ -506,7 +513,7 @@ class SystemDataManager(QObject):
             return                                      
 
         for i, (name, full_scale) in enumerate(self.deditec_info.items()):
-            offset_lut = [0, -0.405, -0.405, 0, -0.25] #using an offset LUT since signals are not 4mA at 0 - [pump, ft10124, ft10106, placeholder, pic10126]
+            offset_lut = [0, -0.405, -0.405, 0, -0.22] #using an offset LUT since signals are not 4mA at 0 - [pump, ft10124, ft10106, placeholder, pic10126]
             val = SystemDataManager.mA_to_scale(mA[i], full_scale, offset_lut[i])
             self._last_deditec[i] = val
             self._deditec_data[i].append(val)
@@ -597,59 +604,123 @@ class SystemDataManager(QObject):
         """Toggles the E-STOP state."""
         self.eStopValue = not self.eStopValue
 
-
     def toggle_can_connection(self):
-        """
-        Toggles the CAN bus connection.
-        If not connected, attempts to establish a connection and start async tasks.
-        If connected, shuts down the CAN bus and cancels async tasks.
-        Emits signals to update the UI.
-        """
         if not self._can_connected:
             try:
-                self._bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="pcan", bitrate=500000)
-                while not self._can_data_queue.empty():
-                    self._can_data_queue.get_nowait()
-                    self._can_data_queue.task_done()
-                
-                CanOpen.operational([0x23], self._bus)
+                # Shared queues for inter-process communication
+                self.can_rx_queue = multiprocessing.Queue(maxsize=5)
+                self.can_tx_queue = multiprocessing.Queue(maxsize=5)
 
-                CanOpen.start_listener(self._bus, resolution=16, data_queue=self._can_data_queue)
+                # Start subprocess
+                self.can_process = multiprocessing.Process(
+                    target=SystemDataManager.run_can_worker_process,
+                    args=(self.can_rx_queue, self.can_tx_queue),
+                    daemon=True  
+                )
+                self.can_process.start()
+
+                # Start async consumers in the main event loop
+                self._consumer_task = asyncio.create_task(self._consumer_task_loop())
+                self._sender_task = asyncio.create_task(self._sender_task_loop())
 
                 self._can_connected = True
                 self.can_connection_status_changed.emit(True)
 
-                self._consumer_task = asyncio.create_task(self._consumer_task_loop())
-                self._sender_task = asyncio.create_task(self._sender_task_loop())
-
             except Exception as e:
-                self.can_error.emit(f"Failed to connect to CAN: {e}")
+                self.can_error.emit(f"Failed to start CAN worker: {e}")
                 self._can_connected = False
                 self.can_connection_status_changed.emit(False)
 
         else:
             try:
+                # Cancel async tasks
                 if self._consumer_task:
                     self._consumer_task.cancel()
-                    self._consumer_task = None
                 if self._sender_task:
                     self._sender_task.cancel()
-                    self._sender_task = None
-                if self._bus:
-                    self._bus.shutdown() 
-                self._bus = None
+                self._consumer_task = None
+                self._sender_task = None
+
+                # Stop CAN process
+                if self.can_process and self.can_process.is_alive():
+                    self.can_process.terminate()
+                    self.can_process.join(timeout=2.0)
+                    if self.can_process.is_alive():
+                        self.can_process.kill()
+
                 self._can_connected = False
                 self.can_connection_status_changed.emit(False)
-
-                self.reset_pressure_data()
-                self.reset_temperature_data()
-                self.reset_deditec_data()
-                self.interlock_flag = False
 
             except Exception as e:
-                self.can_error.emit(f"Error during CAN disconnection: {e}")
+                self.can_error.emit(f"Failed to stop CAN worker: {e}")
                 self._can_connected = False
                 self.can_connection_status_changed.emit(False)
+
+    @staticmethod
+    def run_can_worker_process(rx_queue, tx_queue):
+        """Entry point for the CAN worker subprocess."""
+
+        worker = CANWorker(rx_queue, tx_queue)
+        try:
+            worker.run()  # Blocking loop
+        except KeyboardInterrupt:
+            pass
+        finally:
+            worker.stop()
+
+
+    # def toggle_can_connection(self):
+    #     """
+    #     Toggles the CAN bus connection.
+    #     If not connected, attempts to establish a connection and start async tasks.
+    #     If connected, shuts down the CAN bus and cancels async tasks.
+    #     Emits signals to update the UI.
+    #     """
+    #     if not self._can_connected:
+    #         try:
+    #             self._bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="pcan", bitrate=500000)
+    #             while not self._can_data_queue.empty():
+    #                 self._can_data_queue.get_nowait()
+    #                 self._can_data_queue.task_done()
+                
+    #             CanOpen.operational([0x23], self._bus)
+
+    #             CanOpen.start_listener(self._bus, resolution=16, data_queue=self._can_data_queue)
+
+    #             self._can_connected = True
+    #             self.can_connection_status_changed.emit(True)
+
+    #             self._consumer_task = asyncio.create_task(self._consumer_task_loop())
+    #             self._sender_task = asyncio.create_task(self._sender_task_loop())
+
+    #         except Exception as e:
+    #             self.can_error.emit(f"Failed to connect to CAN: {e}")
+    #             self._can_connected = False
+    #             self.can_connection_status_changed.emit(False)
+
+    #     else:
+    #         try:
+    #             if self._consumer_task:
+    #                 self._consumer_task.cancel()
+    #                 self._consumer_task = None
+    #             if self._sender_task:
+    #                 self._sender_task.cancel()
+    #                 self._sender_task = None
+    #             if self._bus:
+    #                 self._bus.shutdown() 
+    #             self._bus = None
+    #             self._can_connected = False
+    #             self.can_connection_status_changed.emit(False)
+
+    #             self.reset_pressure_data()
+    #             self.reset_temperature_data()
+    #             self.reset_deditec_data()
+    #             self.interlock_flag = False
+
+    #         except Exception as e:
+    #             self.can_error.emit(f"Error during CAN disconnection: {e}")
+    #             self._can_connected = False
+    #             self.can_connection_status_changed.emit(False)
 
     def toggle_interlocks(self):
         """Toggles the interlock state."""
@@ -742,7 +813,7 @@ class SystemDataManager(QObject):
     async def _consumer_task_loop(self):
         while True:
             try:
-                message: Dict[str, Any] = await self._can_data_queue.get()
+                message: Dict[str, Any] = await asyncio.to_thread(self.can_rx_queue.get)
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -758,15 +829,12 @@ class SystemDataManager(QObject):
                     self.update_temperature_data(message["temperature"])
 
                 if "fourtwenty" in message: 
-                    print(message["fourtwenty"])                   
                     self.update_current_data(message["fourtwenty"])
 
             except Exception as e:
                 self.can_error.emit(f"Consumer processing error: {e}")
                 import traceback
                 print(f"Full traceback: {traceback.format_exc()}")
-            finally:
-                self._can_data_queue.task_done()
 
             await asyncio.sleep(0.1)
 
@@ -798,9 +866,19 @@ class SystemDataManager(QObject):
                     self.reset_states()
 
                 
-                if self._can_connected and self._bus:
-                    await CanOpen.send_outputs(self._bus, system_shutdown, pump_state, self.esv_state, self.mfm_setpoints, self.pic_setpoint)
+                # if self._can_connected and self._bus:
+                #     await CanOpen.send_outputs(self._bus, system_shutdown, pump_state, self.esv_state, self.mfm_setpoints, self.pic_setpoint)
+                outputs = {
+                    "pump_state": pump_state,
+                    "esv_state": self.esv_state,
+                    "mfm_state": self.mfm_setpoints,
+                    "pic_state": self.pic_setpoint
 
+                }
+                try:
+                    await asyncio.to_thread(self.can_tx_queue.put, outputs)               
+                except Exception as e:
+                    print(f"TX QUEUE ERROR: {e}")
             except asyncio.CancelledError:
                 print("Sender task cancelled.")
                 break

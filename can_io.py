@@ -307,12 +307,13 @@ from datetime import datetime
 from collections import defaultdict
 from multiprocessing import Queue
 from typing import Dict, List, Optional, Any, Type
+from queue import Empty
 
 
 class CANWorker(can.Listener):
-    def __init__(self, bus: can.BusABC,  rx_queue: Queue, tx_queue: Queue, io_utilities: Type[CANIO]):
+    def __init__(self, rx_queue: Queue, tx_queue: Queue):
         super().__init__()
-        self.bus = bus
+        self.bus = can.interface.Bus(channel="PCAN_USBBUS1", interface="pcan", bitrate=500000)
         self.rx_queue = rx_queue
         self.tx_queue = tx_queue
 
@@ -334,7 +335,9 @@ class CANWorker(can.Listener):
         self.last_received_time = time.time()
         self.timeout = 0.4  # seconds
 
-        self.notifier = can.Notifier(bus, [self])
+        self.notifier = can.Notifier(self.bus, [self])
+        CanOpen.operational([0x23], self.bus)
+
 
     def on_message_received(self, msg: can.Message):
         rec_id = msg.arbitration_id
@@ -389,8 +392,8 @@ class CANWorker(can.Listener):
 
     def send_outputs(self):
         if not self.tx_queue:
-            print("NO SENDER QUEUE!")
-            return
+                print("NO SENDER QUEUE!")
+                return
 
         try:
             outputs: Dict[str, Any] = self.tx_queue.get_nowait()
@@ -420,8 +423,13 @@ class CANWorker(can.Listener):
             self.bus.send(msg_outmm1)
             self.bus.send(msg_minimod)
 
+        except Empty:
+            return
+
         except Exception as e:
+            import traceback
             print(f"[CANWorker] Error sending outputs: {e}")
+            print(traceback.format_exc())
 
     def run(self):
         while True:
@@ -431,4 +439,3 @@ class CANWorker(can.Listener):
 
     def stop(self):
         self._running = False
-        self.notifier.stop()

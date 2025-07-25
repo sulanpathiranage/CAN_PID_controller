@@ -370,6 +370,7 @@ class PumpControlWidget(QWidget):
     def _on_slider_changed(self, value: float):
         self.speed_entry.setText(str(value))
         self.data_manager.set_pump_speed(value)
+        print(value)
 
     def _on_entry_changed(self):
         try:
