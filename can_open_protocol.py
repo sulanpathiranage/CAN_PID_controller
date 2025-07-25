@@ -454,20 +454,20 @@ class CanOpen:
         out_minimodul2_id = 0x601
         out_minimod_id = 0x191
         heaterOn = True
-        if eStopFlag:
-            msg_outmm = can.Message(arbitration_id=out_minimodul1_id, data=[00]*8, is_extended_id=False)
-            msg_outmm1 = can.Message(arbitration_id=out_minimodul2_id, data=[00]*8, is_extended_id=False)
-            msg_minimod = CanOpen.generic_dout_msg(0, 0, 0 ,0, out_minimod_id)
+        # if eStopFlag:
+        #     msg_outmm = can.Message(arbitration_id=out_minimodul1_id, data=[00]*8, is_extended_id=False)
+        #     msg_outmm1 = can.Message(arbitration_id=out_minimodul2_id, data=[00]*8, is_extended_id=False)
+        #     msg_minimod = CanOpen.generic_dout_msg(0, 0, 0 ,0, out_minimod_id)
 
-        else:
-            speed = max(0.0, min(100.0, pump_state[1] if pump_state[1] is not None else 0.0))
-            raw1, raw2, raw3, raw4 = CanOpen.generate_outmm_msg1(pump_state[0], speed, mfm_state[0], mfm_state[1])
-            raw5 = CanOpen.generate_outmm_msg2(pic_state)
-            data_minimodul2 = CanOpen.generate_uint_16bit_msg(int(raw5),0,0,0)
-            data_minimodul = CanOpen.generate_uint_16bit_msg(int(raw1), int(raw2), int(raw3), int(raw4))
-            msg_outmm = can.Message(arbitration_id=out_minimodul1_id, data=data_minimodul, is_extended_id=False)
-            msg_outmm1 = can.Message(arbitration_id=out_minimodul2_id, data=data_minimodul2, is_extended_id=False)
-            msg_minimod = CanOpen.generic_dout_msg(heaterOn, esv_state[0], esv_state[1] ,0, out_minimod_id)
+        # else:
+        speed = max(0.0, min(100.0, pump_state[1] if pump_state[1] is not None else 0.0))
+        raw1, raw2, raw3, raw4 = CanOpen.generate_outmm_msg1(pump_state[0], speed, mfm_state[0], mfm_state[1])
+        raw5 = CanOpen.generate_outmm_msg2(pic_state)
+        data_minimodul2 = CanOpen.generate_uint_16bit_msg(int(raw5),0,0,0)
+        data_minimodul = CanOpen.generate_uint_16bit_msg(int(raw1), int(raw2), int(raw3), int(raw4))
+        msg_outmm = can.Message(arbitration_id=out_minimodul1_id, data=data_minimodul, is_extended_id=False)
+        msg_outmm1 = can.Message(arbitration_id=out_minimodul2_id, data=data_minimodul2, is_extended_id=False)
+        msg_minimod = CanOpen.generic_dout_msg(heaterOn, esv_state[0], esv_state[1] ,0, out_minimod_id)
         try:
             can_bus.send(msg_outmm)
             can_bus.send(msg_outmm1)

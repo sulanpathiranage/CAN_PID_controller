@@ -506,7 +506,7 @@ class SystemDataManager(QObject):
             return                                      
 
         for i, (name, full_scale) in enumerate(self.deditec_info.items()):
-            offset_lut = [0, -0.40, -0.42, 0, -0.25] #using an offset LUT since signals are not 4mA at 0 - [pump, ft10124, ft10106, placeholder, pic10126]
+            offset_lut = [0, -0.405, -0.405, 0, -0.25] #using an offset LUT since signals are not 4mA at 0 - [pump, ft10124, ft10106, placeholder, pic10126]
             val = SystemDataManager.mA_to_scale(mA[i], full_scale, offset_lut[i])
             self._last_deditec[i] = val
             self._deditec_data[i].append(val)
@@ -757,7 +757,8 @@ class SystemDataManager(QObject):
                 if "temperature" in message:
                     self.update_temperature_data(message["temperature"])
 
-                if "fourtwenty" in message:                    
+                if "fourtwenty" in message: 
+                    print(message["fourtwenty"])                   
                     self.update_current_data(message["fourtwenty"])
 
             except Exception as e:
