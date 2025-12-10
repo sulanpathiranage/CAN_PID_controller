@@ -307,14 +307,12 @@ class CanOpen:
 
 def main():
 
-    # === CONFIGURATION ===
     channel = "PCAN_USBBUS1"
     bustype = "pcan"
     bitrate = 500e3
     node_ids = [0x23]                # List of CANopen node IDs to configure
     num_tpdos = 3                    # How many TPDOs to setup per node
 
-    # === SETUP CAN BUS ===
     try:
         can_bus = can.interface.Bus(channel=channel, bustype=bustype, bitrate=bitrate)
     except Exception as e:
@@ -323,7 +321,6 @@ def main():
 
     print("[INFO] CAN bus initialized")
 
-    # === COMMISSION TPDOs ===
     try:
         CanOpen.commission_adc(node_ids, can_bus, num_tpdos)
         print("[INFO] TPDOs successfully configured")
@@ -331,7 +328,6 @@ def main():
         print(f"[ERROR] TPDO configuration failed: {e}")
         return
 
-    # === SEND NMT TO ENTER OPERATIONAL STATE ===
     try:
         CanOpen.operational(node_ids, can_bus)
         print("[INFO] Sent NMT operational command")
