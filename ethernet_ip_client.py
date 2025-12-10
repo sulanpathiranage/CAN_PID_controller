@@ -2,24 +2,20 @@ from pymodbus.client import ModbusTcpClient
 from pymodbus.payload import BinaryPayloadBuilder, BinaryPayloadDecoder
 from pymodbus.constants import Endian
 
-# Modbus TCP settings
-# !!! IMPORTANT: Replace 'localhost' with your Modbus device's IP address !!!
+
 MODBUS_HOST = 'localhost'
 MODBUS_PORT = 502         # Standard Modbus TCP port
-UNIT_ID = 1               # Modbus Slave ID (typically 1 for most devices)
+UNIT_ID = 1               # Modbus Slave ID 
 
-# Register Addresses (based on CSV and common Modbus conventions)
-# Modbus '4xxxx' addresses correspond to holding registers.
-# In pymodbus, you usually use the register address directly (e.g., 402161 becomes 2160)
+
 SETPOINT_REGISTER_ADDRESS = 2160       # Corresponds to 402161 for 'Control Loop - Set Point'
-PROCESS_VARIABLE_REGISTER_ADDRESS = 2208 # Corresponds to 402209 for 'Control Loop - Source Value B' (Assumed PV)
-CONTROLLER_OUTPUT_REGISTER_ADDRESS = 2162 # Corresponds to 402163 for 'Control Loop - Manual Power' (Assumed PID Output)
+PROCESS_VARIABLE_REGISTER_ADDRESS = 2208 # Corresponds to 402209 for 'Control Loop - Source Value B' 
+CONTROLLER_OUTPUT_REGISTER_ADDRESS = 2162 # Corresponds to 402163 for 'Control Loop - Manual Power' 
 
-# PID Tuning Register Addresses (PLACEHOLDERS - NOT FOUND IN YOUR CSV)
-# You MUST replace these with actual addresses from your device's Modbus documentation if available.
-P_GAIN_REGISTER_ADDRESS = None  # Example: 2000 (replace with actual P gain register address)
-I_GAIN_REGISTER_ADDRESS = None  # Example: 2002 (replace with actual I gain register address)
-D_GAIN_REGISTER_ADDRESS = None  # Example: 2004 (replace with actual D gain register address)
+
+P_GAIN_REGISTER_ADDRESS = None  # Example: 2000 
+I_GAIN_REGISTER_ADDRESS = None  # Example: 2002 
+D_GAIN_REGISTER_ADDRESS = None  # Example: 2004 
 
 def connect_modbus_client():
     """Establishes a Modbus TCP client connection."""
@@ -142,10 +138,9 @@ def main():
     """Main function to demonstrate Modbus communication with the heater controller."""
     client = connect_modbus_client()
     if client:
-        # --- Example Usage ---
 
         # 1. Set the Setpoint
-        new_setpoint_temp = 75.0 # Example setpoint in degrees Fahrenheit
+        new_setpoint_temp = 75.0 
         set_setpoint(client, new_setpoint_temp)
 
         # 2. Get the Process Variable (Current Temperature)
@@ -154,11 +149,6 @@ def main():
         # 3. Get the Controller Output (Power being applied)
         current_output_power = get_controller_output(client)
 
-        # 4. Tune PID Parameters (Conceptual - requires actual register addresses)
-        # Uncomment and modify these lines if you have the actual PID gain register addresses
-        # tune_pid_parameters(client, p_gain=1.2, i_gain=0.5, d_gain=0.1)
-
-        # Always close the Modbus connection when done
         client.close()
         print("\nModbus connection closed.")
 
